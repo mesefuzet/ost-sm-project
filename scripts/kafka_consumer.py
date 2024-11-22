@@ -4,7 +4,7 @@
 # In[1]:
 
 
-pip install kafka-python
+#pip install kafka-python
 
 
 # In[12]:
@@ -17,28 +17,35 @@ import json
 # Initialize Kafka Consumer
 consumer = KafkaConsumer(
     'hai-dataset',  # Topic name
-    bootstrap_servers='localhost:9092',  
-    auto_offset_reset='earliest',  
+    bootstrap_servers='localhost:9092',  # Kafka broker
+    auto_offset_reset='earliest',  # Start reading from the earliest message
     enable_auto_commit=True,
-    group_id='hai-consumer-group',  
-    value_deserializer=lambda x: json.loads(x.decode('utf-8'))  
+    group_id='hai-consumer-group',  # Consumer group ID
+    value_deserializer=lambda x: json.loads(x.decode('utf-8'))  # Decode message values
 )
 
 print("Listening to messages from topic: hai-dataset")
 
-message_count = 0  
+
+max_messages = 5
+message_count = 0
+
 try:
     for message in consumer:
         message_count += 1
-        if message_count % 100 == 0:  # Print every 100th message
-            print(f"Message {message_count}: {message.value}")
+        print(f"Message {message_count}: {message.value}")
+        
+        # Stop processing after reaching the max message count
+        if message_count >= max_messages:
+            print(f"Processed {max_messages} messages. Stopping consumer.")
+            break
 except KeyboardInterrupt:
     print("Stopped by user")
 finally:
     consumer.close()
+    print("Kafka Consumer closed.")
 
-    
-print("Done")    
+print("Done")
 
 
 # In[3]:
@@ -99,6 +106,7 @@ consumer = KafkaConsumer(
     enable_auto_commit=True,
     group_id='hai-consumer-group',  
     value_deserializer=lambda x: json.loads(x.decode('utf-8'))  
+)
 
 print("Listening to messages from topic: hai-dataset")
 
@@ -123,10 +131,6 @@ finally:
     print("Kafka Consumer closed.")
 
 print("Done")
-
-
-# In[ ]:
-
 
 
 
