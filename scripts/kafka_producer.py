@@ -9,7 +9,7 @@
 
 # In[5]:
 
-
+""""
 #IGNORE
 #Time Consuming
 from kafka import KafkaProducer
@@ -44,7 +44,7 @@ def stream_data_to_kafka(producer, topic, data, delay=1):
 # Stream data to Kafka
 topic_name = 'hai-dataset'  
 stream_data_to_kafka(producer, topic_name, hai_data)
-
+"""
 
 # In[2]:
 
@@ -56,6 +56,7 @@ import pandas as pd
 import json
 import time
 import logging
+import os
 
 # Initialize Kafka Producer
 producer = KafkaProducer(
@@ -70,8 +71,9 @@ logging.basicConfig(
     format='%(asctime)s - %(message)s'
 )
 
-
-file_path = 'C:/Users/Seif Jaber/hai-train1.csv'  
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+file_path = os.path.join(root_dir, 'data', 'hai-train1.csv')
+#file_path = "data/hai-train1.csv" 
 hai_data = pd.read_csv(file_path)
 
 
@@ -107,7 +109,7 @@ def stream_data_in_batches(producer, topic, data, batch_size=1000, delay=0.1):
         print("Kafka Producer closed.")
 
 # Stream data to Kafka
-topic_name = 'hai-dataset'  # Replace with your Kafka topic name
+topic_name = 'hai-dataset'  
 stream_data_in_batches(producer, topic_name, hai_data, batch_size=1000, delay=0.1)
 
 

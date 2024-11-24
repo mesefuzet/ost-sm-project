@@ -9,7 +9,7 @@
 
 # In[12]:
 
-
+""""
 #IGNORE
 from kafka import KafkaConsumer
 import json
@@ -46,7 +46,7 @@ finally:
     print("Kafka Consumer closed.")
 
 print("Done")
-
+"""
 
 # In[3]:
 
@@ -69,11 +69,11 @@ consumer = KafkaConsumer(
 print("Listening to messages from topic: hai-dataset")
 
 message_count = 0  
-max_messages = 1  # Limit the number of messages to process #Chose 1 to make it faster and quickly test if no issue exist
-
+max_messages = 5  # Limit the number of messages to process #Chose 5 for debugging, later we'll delete this constraint in the final solution
 try:
     for message in consumer:
         message_count += 1
+        #print only every 100th message
         if message_count % 100 == 0:
             print(f"Message {message_count}: {message.value}")
         
@@ -92,8 +92,7 @@ print("Done")
 
 
 # In[4]:
-
-
+"""""
 #Retrieve Message Contents
 from kafka import KafkaConsumer
 import json
@@ -132,5 +131,5 @@ finally:
 
 print("Done")
 
-
+"""
 
