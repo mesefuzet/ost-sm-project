@@ -4,7 +4,8 @@
 # In[1]:
 
 
-#pip install kafka-python
+
+
 
 
 # In[5]:

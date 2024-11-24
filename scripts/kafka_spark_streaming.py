@@ -107,3 +107,5 @@ scaled_test_query = scaled_test_data.select("timestamp", "scaled_features").writ
     .start()
 # Wait for Termination
 spark.streams.awaitAnyTermination()
+
+# Test comment
