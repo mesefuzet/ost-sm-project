@@ -68,18 +68,39 @@ consumer = KafkaConsumer(
 
 print("Listening to messages from topic: hai-dataset")
 
-message_count = 0  
-max_messages = 5  # Limit the number of messages to process #Chose 5 for debugging, later we'll delete this constraint in the final solution
+#message_count = 0  
+#max_messages = 5  # Limit the number of messages to process #Chose 5 for debugging, later we'll delete this constraint in the final solution
+
+train_count = 0
+test_count = 0
+max_train_messages = 5  # Limit the number of train messages to process
+max_test_messages = 5
 try:
     for message in consumer:
-        message_count += 1
-        #print only every 100th message
-        if message_count % 100 == 0:
-            print(f"Message {message_count}: {message.value}")
+        record = message.value
+        data_type = record.get('data_type', 'Unknown') #deserialization of JSON file
+        # Process train data
+        if data_type == "train" and train_count < max_train_messages:
+            train_count += 1
+            print(f"TRAIN Message {train_count}: {record}")
+            #print only every 100th message
+            if train_count % 100 == 0:
+                print(f"Message {train_count}: {record}")
+
+        # Process test data
+        elif data_type == "test" and test_count < max_test_messages:
+            test_count += 1
+            print(f"TEST Message {test_count}: {record}")
+            #print only every 100th message
+            if train_count % 100 == 0:
+                print(f"Message {test_count}: {record}")
+        
+        # for the debug & check, we can delete later
+        #print(f"Data Type: {record.get('data_type', 'Unknown')}")
         
         # Break after processing the maximum number of messages
-        if message_count >= max_messages:
-            print(f"Processed {max_messages} messages. Stopping consumer.")
+        if train_count >= max_train_messages and test_count >= max_test_messages:
+            print(f"Processed {max_train_messages} train messages and {max_test_messages} test messages. Stopping consumer.")
             break
 
 except KeyboardInterrupt:

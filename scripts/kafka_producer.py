@@ -79,7 +79,7 @@ file_path_test = os.path.join(root_dir, 'data', 'hai-test1_with_label.csv')
 hai_data_test = pd.read_csv(file_path_test)
 
 
-def stream_data_in_batches(producer, topic, data, batch_size=1000, delay=0.1):
+def stream_data_in_batches(producer, topic, data, data_type, batch_size=1000, delay=0.1):
     try:
         total_records = len(data)
         batch_count = 0 
@@ -90,6 +90,7 @@ def stream_data_in_batches(producer, topic, data, batch_size=1000, delay=0.1):
 
             # Send each record in the batch to Kafka
             for record in batch:
+                record['data_type'] = data_type #----> since we're sending the train and test data into the same Kafka topic, we need to "label" them as train and test
                 producer.send(topic, value=record)
 
             batch_count += 1
@@ -105,15 +106,26 @@ def stream_data_in_batches(producer, topic, data, batch_size=1000, delay=0.1):
     except Exception as e:
         logging.error(f"An error occurred: {e}")
         print(f"An error occurred: {e}")
-    finally:
-        producer.close()
-        logging.info("Kafka Producer closed.")
-        print("Kafka Producer closed.")
+    #finally:
+     #   producer.close()
+      #  logging.info("Kafka Producer closed.")
+       # print("Kafka Producer closed.")
 
 # Stream data to Kafka
-topic_name = 'hai-dataset'  
-stream_data_in_batches(producer, topic_name, hai_data, batch_size=1000, delay=0.1)
+topic_name = 'hai-dataset'
 
+try:
+    print("Starting to stream TRAIN data...")
+    stream_data_in_batches(producer, topic_name, hai_data, data_type="train", batch_size=1000, delay=0.1)
+
+    print("Starting to stream TEST data...")
+    stream_data_in_batches(producer, topic_name, hai_data_test, data_type="test", batch_size=1000, delay=0.1)
+
+finally:
+    #close the producer after both datasets are streamed
+    producer.close()
+    logging.info("Kafka Producer closed.")
+    print("Kafka Producer closed.")
 
 # In[ ]:
 
