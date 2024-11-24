@@ -75,6 +75,8 @@ root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 file_path = os.path.join(root_dir, 'data', 'hai-train1.csv')
 #file_path = "data/hai-train1.csv" 
 hai_data = pd.read_csv(file_path)
+file_path_test = os.path.join(root_dir, 'data', 'hai-test1_with_label.csv')
+hai_data_test = pd.read_csv(file_path_test)
 
 
 def stream_data_in_batches(producer, topic, data, batch_size=1000, delay=0.1):
