@@ -19,8 +19,8 @@ topic_name = "hai-dataset"
 #Schema definition
 schema = StructType() \
     .add("timestamp", StringType(), True) \
-    .add("sensor_id", StringType(), True) \
-    .add("value", DoubleType(), True)
+    .add("x1003_24_SUM_OUT", DoubleType(), True) \
+    .add("data_type", StringType(), True) #---> consider 
 
 #read step
 kafka_stream = spark.readStream \
@@ -42,28 +42,68 @@ test_data = parsed_stream.filter(col("data_type") == "test")
 ### EMESE 2 STREAMING PROCESSES ####
 # Data Exploration Tasks
 # 1. Detect Missing Values & Basic Statistics
-missing_counts = parsed_stream.select([(count(when(isnan(c) | col(c).isNull(), c))).alias(c) for c in parsed_stream.columns])
+missing_counts = parsed_stream.select(
+    [(count(when(isnan(c) | col(c).isNull(), c))).alias(c) for c in ["x1003_24_SUM_OUT"]]
+)
+
+#debug for missing values
+missing_counts_query = missing_counts.writeStream \
+    .outputMode("complete") \
+    .format("console") \
+    .option("truncate", "false") \
+    .start()
  
-stats = parsed_stream.select(mean(col("value")).alias("mean"),
-                             stddev(col("value")).alias("stddev"))
+train_stats = train_data.select(
+    mean(col("x1003_24_SUM_OUT")).alias("train_mean"),
+    stddev(col("x1003_24_SUM_OUT")).alias("train_stddev")
+)
+test_stats = test_data.select(
+    mean(col("x1003_24_SUM_OUT")).alias("test_mean"),
+    stddev(col("x1003_24_SUM_OUT")).alias("test_stddev")
+)
+# Write statistics to the console (debugging)
+train_stats_query = train_stats.writeStream \
+    .outputMode("complete") \
+    .format("console") \
+    .option("truncate", "false") \
+    .start()
+
+test_stats_query = test_stats.writeStream \
+    .outputMode("complete") \
+    .format("console") \
+    .option("truncate", "false") \
+    .start()
+
 
 # 3. Normalize the Data (MinMax Scaling)
 from pyspark.ml.feature import MinMaxScaler
 from pyspark.ml.linalg import Vectors
 from pyspark.ml.feature import VectorAssembler
 
-assembler = VectorAssembler(inputCols=["value"], outputCol="features")
-feature_data = assembler.transform(parsed_stream)
+assembler = VectorAssembler(inputCols=["x1003_24_SUM_OUT"], outputCol="features")
+train_features = assembler.transform(train_data)
+test_features = assembler.transform(test_data)
 
+# Apply MinMaxScaler
 scaler = MinMaxScaler(inputCol="features", outputCol="scaled_features")
-scaler_model = scaler.fit(feature_data)
-scaled_data = scaler_model.transform(feature_data)
+
+train_scaler_model = scaler.fit(train_features)
+scaled_train_data = train_scaler_model.transform(train_features)
+
+test_scaler_model = scaler.fit(test_features)
+scaled_test_data = test_scaler_model.transform(test_features)
 
 # Write the Results to the Console (For Debugging)
-query = scaled_data.writeStream \
+scaled_train_query = scaled_train_data.select("timestamp", "scaled_features").writeStream \
     .outputMode("append") \
     .format("console") \
+    .option("truncate", "false") \
     .start()
 
+scaled_test_query = scaled_test_data.select("timestamp", "scaled_features").writeStream \
+    .outputMode("append") \
+    .format("console") \
+    .option("truncate", "false") \
+    .start()
 # Wait for Termination
-query.awaitTermination()
+spark.streams.awaitAnyTermination()
