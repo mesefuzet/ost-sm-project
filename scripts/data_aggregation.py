@@ -1,3 +1,5 @@
+# ================================================
+### Bia Data Aggregation (streaming Process) ####
 from kafka import KafkaConsumer, KafkaProducer
 import json
 from collections import deque
@@ -50,16 +52,27 @@ try:
         
         # Perform aggregation at every slide interval
         if (current_time - start_time).total_seconds() >= slide_interval:
-            # Aggregate data (example: count messages by `data_type`)
-            aggregation = {"train": 0, "test": 0}
+            # Initialize aggregation variables
+            aggregation = {"train": {"count": 0, "sum": 0}, "test": {"count": 0, "sum": 0}}
+
+            # Iterate over messages in the sliding window
             for _, rec in window:
                 data_type = rec.get('data_type', 'Unknown')
+                value = rec.get('value', 0)  # Assuming 'value' is a numeric field in the record
+
                 if data_type in aggregation:
-                    aggregation[data_type] += 1
-            
-            # Produce aggregated data to the new Kafka topic
-            producer.send(output_topic, value={"timestamp": current_time.isoformat(), "aggregation": aggregation})
-            print(f"Aggregated data: {aggregation}")
+                    aggregation[data_type]["count"] += 1
+                    aggregation[data_type]["sum"] += value
+
+            # Calculate averages
+            average_data = {
+                "train": aggregation["train"]["sum"] / aggregation["train"]["count"] if aggregation["train"]["count"] > 0 else 0,
+                "test": aggregation["test"]["sum"] / aggregation["test"]["count"] if aggregation["test"]["count"] > 0 else 0
+            }
+
+            # Send average data to the output topic
+            producer.send(output_topic, value={"timestamp": current_time.isoformat(), "average": average_data})
+            print(f"Aggregated average data: {average_data}")
             
             # Reset slide interval timer
             start_time = current_time
