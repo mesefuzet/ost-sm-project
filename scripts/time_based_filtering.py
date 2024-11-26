@@ -55,5 +55,4 @@ finally:
     producer.close()
     print("Kafka consumer and producer closed.")
 
-    # Github name check
-    
+    # Github name check2
