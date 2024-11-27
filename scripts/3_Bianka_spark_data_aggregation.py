@@ -3,6 +3,7 @@ from pyspark.sql.functions import col, mean, stddev, count, isnan, when, lit
 from pyspark.sql.types import StructType, StringType, DoubleType
 import json
 from pyspark.sql.functions import udf
+from pyspark.sql.functions import from_json
 
 ## first draft code
 
@@ -46,12 +47,16 @@ kafka_stream = spark.readStream \
 
 # Deserialize JSON and Parse the Data
 parsed_stream = kafka_stream.selectExpr("CAST(value AS STRING) as json_data") \
-    .selectExpr("json_data") \
-    .rdd.map(lambda row: json.loads(row.json_data)) \
-    .toDF(schema)
+    .select(from_json(col("json_data"), schema).alias("data")) \
+    .select("data.*")
 
 train_data = parsed_stream.filter(col("data_type") == "train")
 test_data = parsed_stream.filter(col("data_type") == "test")
+
+train_data.writeStream \
+    .outputMode("append") \
+    .format("console") \
+    .start()
 
 
 # ================================================
