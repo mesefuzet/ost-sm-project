@@ -4,6 +4,8 @@ from pyspark.sql.types import StructType, StringType, DoubleType
 import json
 from pyspark.sql.functions import udf
 from pyspark.sql.functions import from_json
+from pyspark.ml.feature import VectorAssembler
+from pyspark.sql.functions import min, max
 
 ## first draft code
 
@@ -98,24 +100,33 @@ test_stats_query = test_stats.writeStream \
 
 print("2. PROCESS: DATA NORMALIZATION")
 # 2. Normalize the Data (MinMax Scaling)
-from pyspark.ml.feature import MinMaxScaler
-from pyspark.ml.linalg import Vectors
-from pyspark.ml.feature import VectorAssembler
+
 
 assembler = VectorAssembler(inputCols=["x1003_24_SUM_OUT"], outputCol="features")
 train_features = assembler.transform(train_data)
 test_features = assembler.transform(test_data)
 
-# Apply MinMaxScaler
-scaler = MinMaxScaler(inputCol="features", outputCol="scaled_features")
+# test: static min and max
+static_min = 0.0 
+static_max = 200.0 
 
-train_scaler_model = scaler.fit(train_features)
-scaled_train_data = train_scaler_model.transform(train_features)
 
-test_scaler_model = scaler.fit(test_features)
-scaled_test_data = test_scaler_model.transform(test_features)
+#min_val = train_data.agg(min("x1003_24_SUM_OUT")).collect()[0][0]
+#max_val = train_data.agg(max("x1003_24_SUM_OUT")).collect()[0][0]
 
-# Write the Results to the Console (For Debugging)
+# Normalize using the min-max formula
+scaled_train_data = train_data.withColumn(
+    "scaled_features",
+    (col("x1003_24_SUM_OUT") - lit(static_min)) / (lit(static_max) - lit(static_min))
+)
+
+scaled_test_data = test_data.withColumn(
+    "scaled_features",
+    (col("x1003_24_SUM_OUT") - lit(static_min)) / (lit(static_max) - lit(static_min))
+)
+
+
+#Write the Results to the Console (For Debugging)
 scaled_train_query = scaled_train_data.select("timestamp", "scaled_features").writeStream \
     .outputMode("append") \
     .format("console") \
