@@ -7,6 +7,8 @@ from pyspark.sql.functions import udf
 from pyspark.sql.functions import from_json
 from pyspark.ml.feature import VectorAssembler
 from pyspark.sql.functions import min, max
+from pyspark.sql.types import StructType, StructField, StringType, DoubleType
+
 
 ## first draft code
 #get checkpoint location
@@ -27,9 +29,9 @@ kafka_broker = "localhost:9092"
 topic_name = "hai-dataset"
 
 #Schema definition
-schema = StructType() \
+train_schema = StructType() \
     .add("timestamp", StringType(), True) \
-    .add("data_type", StringType(), True)\
+    .add("data_type", StringType(), True) \
     .add("P1_FCV01D", DoubleType(), True) \
     .add("P1_FCV01Z", DoubleType(), True) \
     .add("P1_FCV03D", DoubleType(), True) \
@@ -44,6 +46,11 @@ schema = StructType() \
     .add("P1_LIT01", DoubleType(), True) \
     .add("x1003_24_SUM_OUT", DoubleType(), True)
 
+test_schema = StructType(train_schema.fields + [
+    StructField("attack_label", StringType(), True)
+])
+
+
 #read step
 kafka_stream = spark.readStream \
     .format("kafka") \
@@ -54,11 +61,11 @@ kafka_stream = spark.readStream \
 
 # Deserialize JSON and Parse the Data
 parsed_stream = kafka_stream.selectExpr("CAST(value AS STRING) as json_data") \
-    .select(from_json(col("json_data"), schema).alias("data")) \
-    .select("data.*")
+    .select(from_json(col("json_data"), train_schema).alias("train_data"), 
+            from_json(col("json_data"), test_schema).alias("test_data"))
 
-train_data = parsed_stream.filter(col("data_type") == "train")
-test_data = parsed_stream.filter(col("data_type") == "test")
+train_data = parsed_stream.select("train_data.*").filter(col("data_type") == "train")
+test_data = parsed_stream.select("test_data.*").filter(col("data_type") == "test")
 
 #train_data.writeStream \
 #    .outputMode("append") \
@@ -88,12 +95,22 @@ test_data_query = test_data.writeStream \
 # 1. Detect Missing Values & Basic Statistics
 
 print("1. PROCESS: DETECTION OF MISSING VALUES & MAIN STATISTICS")
-missing_counts = parsed_stream.select(
-    [(count(when(isnan(c) | col(c).isNull(), c))).alias(c) for c in ["x1003_24_SUM_OUT"]]
+missing_counts_train = train_data.select(
+    [(count(when(isnan(c) | col(c).isNull(), c))).alias(c) for c in train_data.columns]
+)
+
+missing_counts_test = test_data.select(
+    [(count(when(isnan(c) | col(c).isNull(), c))).alias(c) for c in test_data.columns]
 )
 
 #debug for missing values
-missing_counts_query = missing_counts.writeStream \
+missing_counts_train_query = missing_counts_train.writeStream \
+    .outputMode("complete") \
+    .format("console") \
+    .option("truncate", "false") \
+    .start()
+
+missing_counts_test_query = missing_counts_test.writeStream \
     .outputMode("complete") \
     .format("console") \
     .option("truncate", "false") \
@@ -165,6 +182,7 @@ print("2. PROCESS: DATA NORMALIZATION")
 #await terminations so the code won't run until infinity
 train_data_query.awaitTermination()
 test_data_query.awaitTermination()
-missing_counts_query.awaitTermination()
+missing_counts_train_query.awaitTermination()
+missing_counts_test_query.awaitTermination()
 train_stats_query.awaitTermination()
 test_stats_query.awaitTermination()

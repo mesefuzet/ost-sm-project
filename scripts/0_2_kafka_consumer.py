@@ -52,7 +52,7 @@ print("Done")
 
 
 #Retreive Message
-print("Test")
+#print("Test")
 from kafka import KafkaConsumer
 import json
 
@@ -73,8 +73,8 @@ print("Listening to messages from topic: hai-dataset")
 
 train_count = 0
 test_count = 0
-max_train_messages = 5  # Limit the number of train messages to process
-max_test_messages = 5
+max_train_messages = 10  # Limit the number of train messages to process
+max_test_messages = 10
 try:
     for message in consumer:
         record = message.value
@@ -82,7 +82,7 @@ try:
         # Process train data
         if data_type == "train" and train_count < max_train_messages:
             train_count += 1
-            print(f"TRAIN Message {train_count}: {record}")
+            #print(f"TRAIN Message {train_count}: {record}")
             #print only every 100th message
             if train_count % 100 == 0:
                 print(f"Message {train_count}: {record}")
@@ -90,7 +90,7 @@ try:
         # Process test data
         elif data_type == "test" and test_count < max_test_messages:
             test_count += 1
-            print(f"TEST Message {test_count}: {record}")
+            #print(f"TEST Message {test_count}: {record}")
             #print only every 100th message
             if train_count % 100 == 0:
                 print(f"Message {test_count}: {record}")
