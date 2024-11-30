@@ -8,6 +8,7 @@ from pyspark.sql.functions import from_json
 from pyspark.ml.feature import VectorAssembler
 from pyspark.sql.functions import min, max
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType
+from pyspark.sql.functions import regexp_replace
 
 
 ## first draft code
@@ -61,6 +62,7 @@ kafka_stream = spark.readStream \
     .option("startingOffsets", "earliest") \
     .load()
 
+
 print("DEBUG: Printing raw Kafka messages...")
 kafka_stream.selectExpr("CAST(value AS STRING)").writeStream \
     .outputMode("append") \
@@ -81,80 +83,62 @@ kafka_stream.selectExpr("CAST(value AS STRING)").writeStream \
 #    .select(from_json(col("json_data"), train_schema).alias("train_data"), 
 #            from_json(col("json_data"), test_schema).alias("test_data"))
 
-parsed_stream = kafka_stream.selectExpr("CAST(value AS STRING) as json_data") \
-    .select(
-        from_json(col("json_data"), train_schema).alias("train_data"),
-        from_json(col("json_data"), test_schema).alias("test_data")
-    )
+train_stream = kafka_stream.selectExpr("CAST(value AS STRING) as json_data") \
+    .filter(col("json_data").contains('"data_type":"train"')) \
+    .select(from_json(col("json_data"), train_schema).alias("train_data")) \
+    .select("train_data.*")  # Expand the train_data column
 
 
-print("DEBUG: Printing parsed fields...")
-parsed_stream.select("train_data.*", "test_data.*").writeStream \
-    .outputMode("append") \
-    .format("console") \
-    .option("truncate", "false") \
-    .start()
+test_stream = kafka_stream.selectExpr("CAST(value AS STRING) as json_data") \
+    .filter(col("json_data").contains('"data_type":"test"')) \
+    .select(from_json(col("json_data"), test_schema).alias("test_data")) \
+    .select("test_data.*")
 
-# Debug Specific Columns
-parsed_stream.select(
-    col("train_data.data_type").alias("train_data_type"),
-    col("test_data.data_type").alias("test_data_type")
-).writeStream \
-    .outputMode("append") \
-    .format("console") \
-    .option("truncate", "false") \
-    .start()
+print("DEBUG--------------------------")
 
 # Write Parsed Data to JSON for Inspection
-parsed_stream.writeStream \
+train_stream.writeStream \
     .outputMode("append") \
     .format("json") \
     .option("path", "debug/parsed_output") \
     .option("checkpointLocation", "debug/parsed_checkpoint") \
     .start()
 
-parsed_stream.withColumn("has_data_type", col("train_data.data_type").isNotNull()).writeStream \
+test_stream.writeStream \
     .outputMode("append") \
-    .format("console") \
-    .option("truncate", "false") \
+    .format("json") \
+    .option("path", "debug/parsed_output") \
+    .option("checkpointLocation", "debug/parsed_checkpoint") \
     .start()
 
-
-train_data = parsed_stream.select("train_data.*").filter(col("data_type") == "train")
-test_data = parsed_stream.select("test_data.*").filter(col("data_type") == "test")
-
 print("Schema of Train Data:")
-train_data.printSchema()
+train_stream.printSchema()
+
 print("Schema of Test Data:")
-test_data.printSchema()
+test_stream.printSchema()
+
+
+
+#train_data = deserialized_stream.filter(col("train_data.data_type") == "train").select("train_data.*")
+#test_data = deserialized_stream.filter(col("test_data.data_type") == "test").select("test_data.*")
+
 
 
 print("DEBUG: Verifying TRAIN data stream...")
-train_data.writeStream \
+train_stream.writeStream \
     .outputMode("append") \
     .format("console") \
     .option("truncate", "false") \
     .start()
 
-print("DEBUG: Verifying TEST data stream...")
-test_data.writeStream \
+test_stream.writeStream \
     .outputMode("append") \
     .format("console") \
     .option("truncate", "false") \
     .start()
 
 print("--------")
-train_data.groupBy().count().writeStream \
-    .outputMode("complete") \
-    .format("console") \
-    .option("truncate", "false") \
-    .start()
 
-test_data.groupBy().count().writeStream \
-    .outputMode("complete") \
-    .format("console") \
-    .option("truncate", "false") \
-    .start()
 
 
 #train_data.writeStream \
@@ -163,7 +147,7 @@ test_data.groupBy().count().writeStream \
 #    .start()
 
 # Start writing train data stream with checkpointing
-train_data_query = train_data.writeStream \
+train_data_query = train_stream.writeStream \
     .outputMode("append") \
     .format("console") \
     .option("truncate", "false") \
@@ -171,7 +155,7 @@ train_data_query = train_data.writeStream \
     .start()
 
 # Start writing test data stream with checkpointing
-test_data_query = test_data.writeStream \
+test_data_query = test_stream.writeStream \
     .outputMode("append") \
     .format("console") \
     .option("truncate", "false") \
@@ -185,11 +169,11 @@ test_data_query = test_data.writeStream \
 # 1. Detect Missing Values & Basic Statistics
 
 print("1. PROCESS: DETECTION OF MISSING VALUES & MAIN STATISTICS")
-missing_counts_train = train_data.select(
+missing_counts_train = train_stream.select(
     [(count(when(isnan(c) | col(c).isNull(), c))).alias(c) for c in train_data.columns]
 )
 
-missing_counts_test = test_data.select(
+missing_counts_test = test_stream.select(
     [(count(when(isnan(c) | col(c).isNull(), c))).alias(c) for c in test_data.columns]
 )
 
@@ -206,14 +190,28 @@ missing_counts_test_query = missing_counts_test.writeStream \
     .option("truncate", "false") \
     .start()
  
-train_stats = train_data.select(
+train_stats = train_stream.select(
     mean(col("x1003_24_SUM_OUT")).alias("train_mean"),
     stddev(col("x1003_24_SUM_OUT")).alias("train_stddev")
 )
-test_stats = test_data.select(
+
+test_stats = test_stream.select(
     mean(col("x1003_24_SUM_OUT")).alias("test_mean"),
     stddev(col("x1003_24_SUM_OUT")).alias("test_stddev")
 )
+
+# Write statistics to the console for debugging
+train_stats.writeStream \
+    .outputMode("complete") \
+    .format("console") \
+    .option("truncate", "false") \
+    .start()
+
+test_stats.writeStream \
+    .outputMode("complete") \
+    .format("console") \
+    .option("truncate", "false") \
+    .start()
 
 # Write statistics to the console (debugging)
 train_stats_query = train_stats.writeStream \
