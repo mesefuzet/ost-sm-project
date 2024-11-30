@@ -58,6 +58,19 @@ import json
 import time
 import logging
 import os
+import time
+
+#Emese comment:
+#for debugging and making the solution easier to handle -> I added a 5 minute counter so everything will stop until 5 mins
+#I made this because the producer needs to constantly produce the data into the topic so the consumer and the Spark can process it later
+#if it's not running constantly, consumer and Spark will have no data to consume and process, but for development we also need to regulate it somehow so it's not running until infinity
+
+#iteration_count = 0
+#max_iterations = 10
+
+
+duration = 300  # 5 minutes
+start_time = time.time()
 
 # Initialize Kafka Producer
 producer = KafkaProducer(
@@ -116,11 +129,25 @@ def stream_data_in_batches(producer, topic, data, data_type, batch_size=1000, de
 topic_name = 'hai-dataset'
 
 try:
-    print("Starting to stream TRAIN data...")
-    stream_data_in_batches(producer, topic_name, hai_data, data_type="train", batch_size=1000, delay=0.1)
+    while time.time() - start_time < duration:
+        print("Starting to stream TRAIN data...")
+        stream_data_in_batches(producer, topic_name, hai_data, data_type="train", batch_size=1000, delay=0.1)
 
-    print("Starting to stream TEST data...")
-    stream_data_in_batches(producer, topic_name, hai_data_test, data_type="test", batch_size=1000, delay=0.1)
+        #if the specified duration time is up, break
+        if time.time() - start_time >= duration:
+            print("Time limit reached during TRAIN data streaming. STOPPING.")
+            break
+    
+    time.sleep(5)
+
+    while time.time() - start_time < duration:
+        print("Starting to stream TEST data...")
+        stream_data_in_batches(producer, topic_name, hai_data_test, data_type="test", batch_size=1000, delay=0.1)
+
+        #if the specified duration time is up, break
+        if time.time() - start_time >= duration:
+            print("Time limit reached during TRAIN data streaming. STOPPING.")
+            break
 
 finally:
     #close the producer after both datasets are streamed

@@ -2,12 +2,17 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, mean, stddev, count, isnan, when, lit
 from pyspark.sql.types import StructType, StringType, DoubleType
 import json
+import os
 from pyspark.sql.functions import udf
 from pyspark.sql.functions import from_json
 from pyspark.ml.feature import VectorAssembler
 from pyspark.sql.functions import min, max
 
 ## first draft code
+#get checkpoint location
+checkpoint_location = os.path.join(os.getcwd(), "spark_checkpoints")
+os.makedirs(checkpoint_location, exist_ok=True)
+
 
 #init session
 spark = SparkSession.builder \
@@ -55,10 +60,28 @@ parsed_stream = kafka_stream.selectExpr("CAST(value AS STRING) as json_data") \
 train_data = parsed_stream.filter(col("data_type") == "train")
 test_data = parsed_stream.filter(col("data_type") == "test")
 
-train_data.writeStream \
+#train_data.writeStream \
+#    .outputMode("append") \
+#    .format("console") \
+#    .start()
+
+# Start writing train data stream with checkpointing
+train_data_query = train_data.writeStream \
     .outputMode("append") \
     .format("console") \
+    .option("truncate", "false") \
+    .option("checkpointLocation", os.path.join(checkpoint_location, "train_data")) \
     .start()
+
+# Start writing test data stream with checkpointing
+test_data_query = test_data.writeStream \
+    .outputMode("append") \
+    .format("console") \
+    .option("truncate", "false") \
+    .option("checkpointLocation", os.path.join(checkpoint_location, "test_data")) \
+    .start()
+
+
 # ===============================================
 ### EMESE 2 STREAMING PROCESSES ####
 # Data Exploration Tasks
@@ -102,39 +125,46 @@ print("2. PROCESS: DATA NORMALIZATION")
 # 2. Normalize the Data (MinMax Scaling)
 
 
-assembler = VectorAssembler(inputCols=["x1003_24_SUM_OUT"], outputCol="features")
-train_features = assembler.transform(train_data)
-test_features = assembler.transform(test_data)
+# assembler = VectorAssembler(inputCols=["x1003_24_SUM_OUT"], outputCol="features")
+# train_features = assembler.transform(train_data)
+# test_features = assembler.transform(test_data)
 
-# test: static min and max
-static_min = 0.0 
-static_max = 200.0 
-
-
-#min_val = train_data.agg(min("x1003_24_SUM_OUT")).collect()[0][0]
-#max_val = train_data.agg(max("x1003_24_SUM_OUT")).collect()[0][0]
-
-# Normalize using the min-max formula
-scaled_train_data = train_data.withColumn(
-    "scaled_features",
-    (col("x1003_24_SUM_OUT") - lit(static_min)) / (lit(static_max) - lit(static_min))
-)
-
-scaled_test_data = test_data.withColumn(
-    "scaled_features",
-    (col("x1003_24_SUM_OUT") - lit(static_min)) / (lit(static_max) - lit(static_min))
-)
+# # test: static min and max
+# static_min = 0.0 
+# static_max = 200.0 
 
 
-#Write the Results to the Console (For Debugging)
-scaled_train_query = scaled_train_data.select("timestamp", "scaled_features").writeStream \
-    .outputMode("append") \
-    .format("console") \
-    .option("truncate", "false") \
-    .start()
+# #min_val = train_data.agg(min("x1003_24_SUM_OUT")).collect()[0][0]
+# #max_val = train_data.agg(max("x1003_24_SUM_OUT")).collect()[0][0]
 
-scaled_test_query = scaled_test_data.select("timestamp", "scaled_features").writeStream \
-    .outputMode("append") \
-    .format("console") \
-    .option("truncate", "false") \
-    .start()
+# # Normalize using the min-max formula
+# scaled_train_data = train_data.withColumn(
+#     "scaled_features",
+#     (col("x1003_24_SUM_OUT") - lit(static_min)) / (lit(static_max) - lit(static_min))
+# )
+
+# scaled_test_data = test_data.withColumn(
+#     "scaled_features",
+#     (col("x1003_24_SUM_OUT") - lit(static_min)) / (lit(static_max) - lit(static_min))
+# )
+
+
+# #Write the Results to the Console (For Debugging)
+# scaled_train_query = scaled_train_data.select("timestamp", "scaled_features").writeStream \
+#     .outputMode("append") \
+#     .format("console") \
+#     .option("truncate", "false") \
+#     .start()
+
+# scaled_test_query = scaled_test_data.select("timestamp", "scaled_features").writeStream \
+#     .outputMode("append") \
+#     .format("console") \
+#     .option("truncate", "false") \
+#     .start()
+
+#await terminations so the code won't run until infinity
+train_data_query.awaitTermination()
+test_data_query.awaitTermination()
+missing_counts_query.awaitTermination()
+train_stats_query.awaitTermination()
+test_stats_query.awaitTermination()
