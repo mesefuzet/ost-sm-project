@@ -69,8 +69,9 @@ import time
 #max_iterations = 10
 
 
-duration = 300  # 5 minutes
-start_time = time.time()
+train_duration = 300  # 5minutes for train
+test_duration = 300   # 5minutes for test
+train_start_time = time.time()
 
 # Initialize Kafka Producer
 producer = KafkaProducer(
@@ -92,6 +93,9 @@ hai_data = pd.read_csv(file_path)
 file_path_test = os.path.join(root_dir, 'data', 'hai-test1_with_label.csv')
 hai_data_test = pd.read_csv(file_path_test)
 
+def validate_record(record):
+    required_keys = {'timestamp', 'data_type'}
+    return all(key in record for key in required_keys)
 
 def stream_data_in_batches(producer, topic, data, data_type, batch_size=1000, delay=0.1):
     try:
@@ -106,6 +110,11 @@ def stream_data_in_batches(producer, topic, data, data_type, batch_size=1000, de
             for record in batch:
                 record['data_type'] = data_type #----> since we're sending the train and test data into the same Kafka topic, we need to "label" them as train and test
                 producer.send(topic, value=record)
+
+            if validate_record(record):  # Only send valid records
+                    producer.send(topic, value=record)
+            else:
+                logging.warning(f"Invalid record skipped: {record}")
 
             batch_count += 1
             logging.info(f"Batch {batch_count} sent. Records processed: {min(i + batch_size, total_records)}/{total_records}")
@@ -129,23 +138,24 @@ def stream_data_in_batches(producer, topic, data, data_type, batch_size=1000, de
 topic_name = 'hai-dataset'
 
 try:
-    while time.time() - start_time < duration:
+    while time.time() - train_start_time < train_duration:
         print("Starting to stream TRAIN data...")
         stream_data_in_batches(producer, topic_name, hai_data, data_type="train", batch_size=1000, delay=0.1)
 
         #if the specified duration time is up, break
-        if time.time() - start_time >= duration:
+        if time.time() - train_start_time >= train_duration:
             print("Time limit reached during TRAIN data streaming. STOPPING.")
             break
     
     time.sleep(5)
+    test_start_time = time.time()
 
-    while time.time() - start_time < duration:
+    while time.time() - test_start_time < test_duration:
         print("Starting to stream TEST data...")
         stream_data_in_batches(producer, topic_name, hai_data_test, data_type="test", batch_size=1000, delay=0.1)
 
         #if the specified duration time is up, break
-        if time.time() - start_time >= duration:
+        if time.time() - test_start_time >= test_duration:
             print("Time limit reached during TRAIN data streaming. STOPPING.")
             break
 
