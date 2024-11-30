@@ -97,14 +97,14 @@ def validate_record(record):
     required_keys = {'timestamp', 'data_type'}
     return all(key in record for key in required_keys)
 
-def stream_data_in_batches(producer, topic, data, data_type, batch_size=1000, delay=0.1):
+def stream_data_in_batches(producer, topic, data, data_type, batch_size=1000, delay=0.2):
     try:
         total_records = len(data)
         batch_count = 0 
+        records_sent = 0
         
-        
-        for i in range(0, total_records, batch_size):
-            batch = data.iloc[i:i+batch_size].to_dict(orient='records') 
+        while records_sent < total_records:
+            batch = data.iloc[records_sent:records_sent+batch_size].to_dict(orient='records') 
 
             # Send each record in the batch to Kafka
             for record in batch:
@@ -117,10 +117,15 @@ def stream_data_in_batches(producer, topic, data, data_type, batch_size=1000, de
                 logging.warning(f"Invalid record skipped: {record}")
 
             batch_count += 1
-            logging.info(f"Batch {batch_count} sent. Records processed: {min(i + batch_size, total_records)}/{total_records}")
-            print(f"Batch {batch_count} sent. Records processed: {min(i + batch_size, total_records)}/{total_records}")
+            records_sent += len(batch)
+            logging.info(f"Batch {batch_count} sent. Records processed: {min(records_sent + batch_size, total_records)}/{total_records}")
+            print(f"Batch {batch_count} sent. Records processed: {min(records_sent + batch_size, total_records)}/{total_records}")
 
             time.sleep(delay)
+            # Stop streaming if all records have been sent
+            if records_sent >= total_records:
+                print(f"Finished streaming {data_type} data. Total records sent: {records_sent}")
+                break
 
         # Final summary
         logging.info(f"Streaming completed. Total records sent: {total_records}")
@@ -138,34 +143,22 @@ def stream_data_in_batches(producer, topic, data, data_type, batch_size=1000, de
 topic_name = 'hai-dataset'
 
 try:
-    while time.time() - train_start_time < train_duration:
-        print("Starting to stream TRAIN data...")
-        stream_data_in_batches(producer, topic_name, hai_data, data_type="train", batch_size=1000, delay=0.1)
+    print("DEBUG: Starting TRAIN data streaming...")
+    stream_data_in_batches(producer, topic_name, hai_data, data_type="train")  # Stream train data once
+    print("DEBUG: Completed TRAIN data streaming.")
 
-        #if the specified duration time is up, break
-        if time.time() - train_start_time >= train_duration:
-            print("Time limit reached during TRAIN data streaming. STOPPING.")
-            break
     
     time.sleep(5)
-    test_start_time = time.time()
 
-    while time.time() - test_start_time < test_duration:
-        print("Starting to stream TEST data...")
-        stream_data_in_batches(producer, topic_name, hai_data_test, data_type="test", batch_size=1000, delay=0.1)
-
-        #if the specified duration time is up, break
-        if time.time() - test_start_time >= test_duration:
-            print("Time limit reached during TRAIN data streaming. STOPPING.")
-            break
+    print("DEBUG: Starting TEST data streaming...")
+    stream_data_in_batches(producer, topic_name, hai_data_test, data_type="test")  # Stream test data once
+    print("DEBUG: Completed TEST data streaming.")
+except Exception as e:
+    print(f"Error occurred: {e}")
 
 finally:
-    #close the producer after both datasets are streamed
     producer.close()
-    logging.info("Kafka Producer closed.")
-    print("Kafka Producer closed.")
-
-# In[ ]:
+    print("DEBUG: Kafka Producer closed.")
 
 
 

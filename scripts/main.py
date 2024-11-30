@@ -33,21 +33,21 @@ try:
     time.sleep(3)
 
     # Start the Spark streaming process
-    spark_process = subprocess.Popen([python_executable, spark_file], 
-                                     stdout=sys.stdout, 
-                                     stderr=sys.stderr)
-    print(f"Started Spark Streaming with PID {spark_process.pid}")
+    # spark_process = subprocess.Popen([python_executable, spark_file], 
+    #                                  stdout=sys.stdout, 
+    #                                  stderr=sys.stderr)
+    # print(f"Started Spark Streaming with PID {spark_process.pid}")
     time.sleep(3)
 
     # Wait until finish
     producer_process.wait()
     consumer_process.wait()
-    spark_process.wait()
+    #spark_process.wait()
 
 except KeyboardInterrupt:
     print("Terminating all processes...")
     producer_process.terminate()
     consumer_process.terminate()
-    spark_process.terminate()
+    #spark_process.terminate()
 finally:
     print("All processes terminated.")
