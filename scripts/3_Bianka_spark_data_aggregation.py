@@ -21,7 +21,9 @@ spark = SparkSession.builder \
     .appName("KafkaSparkStreaming") \
     .master("local[*]") \
     .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.1.3") \
+    .config("spark.sql.streaming.microBatchDurationMs", "5000") \
     .config("spark.sql.shuffle.partitions", "4") \
+    .config("spark.sql.streaming.forceDeleteTempCheckpointLocation", "true") \
     .getOrCreate()
 
 #config Kafka

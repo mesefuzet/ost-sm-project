@@ -21,7 +21,9 @@ spark = SparkSession.builder \
     .appName("KafkaSparkStreaming") \
     .master("local[*]") \
     .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.1.3") \
+    .config("spark.sql.streaming.microBatchDurationMs", "5000") \
     .config("spark.sql.shuffle.partitions", "4") \
+    .config("spark.sql.streaming.forceDeleteTempCheckpointLocation", "true") \
     .getOrCreate()
 
 #config Kafka
@@ -59,13 +61,46 @@ kafka_stream = spark.readStream \
     .option("startingOffsets", "earliest") \
     .load()
 
+print("DEBUG: Printing raw Kafka messages...")
+kafka_stream.selectExpr("CAST(value AS STRING)").writeStream \
+    .outputMode("append") \
+    .format("console") \
+    .option("truncate", "false") \
+    .start()
+
 # Deserialize JSON and Parse the Data
 parsed_stream = kafka_stream.selectExpr("CAST(value AS STRING) as json_data") \
     .select(from_json(col("json_data"), train_schema).alias("train_data"), 
             from_json(col("json_data"), test_schema).alias("test_data"))
 
+print("DEBUG: Printing parsed fields...")
+parsed_stream.select("train_data.*", "test_data.*").writeStream \
+    .outputMode("append") \
+    .format("console") \
+    .option("truncate", "false") \
+    .start()
+
 train_data = parsed_stream.select("train_data.*").filter(col("data_type") == "train")
 test_data = parsed_stream.select("test_data.*").filter(col("data_type") == "test")
+
+if train_data.isEmpty():
+    print("[!!!] WARNING: Empty train_data batch.")
+if test_data.isEmpty():
+    print("[!!!] WARNING: Empty test_data batch.")
+
+print("DEBUG: Verifying TRAIN data stream...")
+train_data.writeStream \
+    .outputMode("append") \
+    .format("console") \
+    .option("truncate", "false") \
+    .start()
+
+print("DEBUG: Verifying TEST data stream...")
+test_data.writeStream \
+    .outputMode("append") \
+    .format("console") \
+    .option("truncate", "false") \
+    .start()
 
 #train_data.writeStream \
 #    .outputMode("append") \
