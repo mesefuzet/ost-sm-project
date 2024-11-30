@@ -1,2 +1,3 @@
 venv/
 spark_checkpoints/
+debug/
