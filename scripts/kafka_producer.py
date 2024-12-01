@@ -24,7 +24,7 @@ producer = KafkaProducer(
     value_serializer=lambda v: json.dumps(v).encode('utf-8')  # Serialize data to JSON
 )
 
-file_path = 'C:/Users/Seif Jaber/hai-train1.csv' 
+file_path = 'C:/Users/Asus/Desktop/hai-train1.csv' 
 hai_data = pd.read_csv(file_path)
 
 # Define a function to stream data into Kafka
