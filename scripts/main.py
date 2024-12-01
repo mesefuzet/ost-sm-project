@@ -32,7 +32,7 @@ try:
     print(f"Started Consumer with PID {consumer_process.pid}")
     time.sleep(3)
 
-    # Start the Spark streaming process
+    #Start the Spark streaming process
     spark_process = subprocess.Popen([python_executable, spark_file], 
                                      stdout=sys.stdout, 
                                      stderr=sys.stderr)

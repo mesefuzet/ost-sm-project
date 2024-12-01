@@ -11,157 +11,6 @@ from pyspark.sql.types import StructType, StructField, StringType, DoubleType
 from pyspark.sql.functions import regexp_replace
 
 
-## first draft code
-#get checkpoint location
-# checkpoint_location = os.path.join(os.getcwd(), "spark_checkpoints")
-# os.makedirs(checkpoint_location, exist_ok=True)
-
-
-# #init session
-# spark = SparkSession.builder \
-#     .appName("KafkaSparkStreaming") \
-#     .master("local[*]") \
-#     .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.1.3") \
-#     .config("spark.sql.streaming.microBatchDurationMs", "5000") \
-#     .config("spark.sql.shuffle.partitions", "4") \
-#     .config("spark.sql.streaming.forceDeleteTempCheckpointLocation", "true") \
-#     .getOrCreate()
-
-# #config Kafka
-# kafka_broker = "localhost:9092"
-# topic_name = "hai-dataset"
-
-# #Schema definition
-# train_schema = StructType() \
-#     .add("timestamp", StringType(), True) \
-#     .add("data_type", StringType(), True) \
-#     .add("P1_FCV01D", DoubleType(), True) \
-#     .add("P1_FCV01Z", DoubleType(), True) \
-#     .add("P1_FCV03D", DoubleType(), True) \
-#     .add("P1_FT01", DoubleType(), True) \
-#     .add("P1_FT01Z", DoubleType(), True) \
-#     .add("P1_FT02", DoubleType(), True) \
-#     .add("P1_FT02Z", DoubleType(), True) \
-#     .add("P1_FT03", DoubleType(), True) \
-#     .add("P1_FT03Z", DoubleType(), True) \
-#     .add("P1_LCV01D", DoubleType(), True) \
-#     .add("P1_LCV01Z", DoubleType(), True) \
-#     .add("P1_LIT01", DoubleType(), True) \
-#     .add("x1003_24_SUM_OUT", DoubleType(), True)
-
-# test_schema = StructType(train_schema.fields + [
-#     StructField("attack_label", StringType(), True)
-# ])
-
-
-# #read step
-# kafka_stream = spark.readStream \
-#     .format("kafka") \
-#     .option("kafka.bootstrap.servers", kafka_broker) \
-#     .option("subscribe", topic_name) \
-#     .option("startingOffsets", "earliest") \
-#     .load()
-
-
-# print("DEBUG: Printing raw Kafka messages...")
-# kafka_stream.selectExpr("CAST(value AS STRING)").writeStream \
-#     .outputMode("append") \
-#     .format("console") \
-#     .option("truncate", "false") \
-#     .start()
-
-# kafka_stream.selectExpr("CAST(value AS STRING)").writeStream \
-#     .outputMode("append") \
-#     .format("json") \
-#     .option("path", "debug/raw_kafka_output") \
-#     .option("checkpointLocation", "debug/raw_kafka_checkpoint") \
-#     .start()
-
-
-# # Deserialize JSON and Parse the Data
-# #parsed_stream = kafka_stream.selectExpr("CAST(value AS STRING) as json_data") \
-# #    .select(from_json(col("json_data"), train_schema).alias("train_data"), 
-# #            from_json(col("json_data"), test_schema).alias("test_data"))
-
-# train_stream = kafka_stream.selectExpr("CAST(value AS STRING) as json_data") \
-#     .filter(col("json_data").contains('"data_type":"train"')) \
-#     .select(from_json(col("json_data"), train_schema).alias("train_data")) \
-#     .select("train_data.*")  # Expand the train_data column
-
-
-# test_stream = kafka_stream.selectExpr("CAST(value AS STRING) as json_data") \
-#     .filter(col("json_data").contains('"data_type":"test"')) \
-#     .select(from_json(col("json_data"), test_schema).alias("test_data")) \
-#     .select("test_data.*")
-
-# print("DEBUG--------------------------")
-
-# # Write Parsed Data to JSON for Inspection
-# train_stream.writeStream \
-#     .outputMode("append") \
-#     .format("json") \
-#     .option("path", "debug/parsed_output") \
-#     .option("checkpointLocation", "debug/parsed_checkpoint") \
-#     .start()
-
-# test_stream.writeStream \
-#     .outputMode("append") \
-#     .format("json") \
-#     .option("path", "debug/parsed_output") \
-#     .option("checkpointLocation", "debug/parsed_checkpoint") \
-#     .start()
-
-# print("Schema of Train Data:")
-# train_stream.printSchema()
-
-# print("Schema of Test Data:")
-# test_stream.printSchema()
-
-
-
-# #train_data = deserialized_stream.filter(col("train_data.data_type") == "train").select("train_data.*")
-# #test_data = deserialized_stream.filter(col("test_data.data_type") == "test").select("test_data.*")
-
-
-
-# print("DEBUG: Verifying TRAIN data stream...")
-# train_stream.writeStream \
-#     .outputMode("append") \
-#     .format("console") \
-#     .option("truncate", "false") \
-#     .start()
-
-# test_stream.writeStream \
-#     .outputMode("append") \
-#     .format("console") \
-#     .option("truncate", "false") \
-#     .start()
-
-# print("--------")
-
-
-
-# #train_data.writeStream \
-# #    .outputMode("append") \
-# #    .format("console") \
-# #    .start()
-
-# # Start writing train data stream with checkpointing
-# train_data_query = train_stream.writeStream \
-#     .outputMode("append") \
-#     .format("console") \
-#     .option("truncate", "false") \
-#     .option("checkpointLocation", os.path.join(checkpoint_location, "train_data")) \
-#     .start()
-
-# # Start writing test data stream with checkpointing
-# test_data_query = test_stream.writeStream \
-#     .outputMode("append") \
-#     .format("console") \
-#     .option("truncate", "false") \
-#     .option("checkpointLocation", os.path.join(checkpoint_location, "test_data")) \
-#     .start()
-
 
 # Initialize Spark Session
 spark = SparkSession.builder \
@@ -190,28 +39,49 @@ kafka_stream.selectExpr("CAST(value AS STRING)").writeStream \
     .option("checkpointLocation", "debug/raw_kafka_checkpoint") \
     .start()
 
+raw_stream = kafka_stream.selectExpr("CAST(value AS STRING) as raw_data")
+
 # Parse JSON keys and values
-parsed_stream = kafka_stream.selectExpr("CAST(value AS STRING) as raw_data") \
-    .withColumn("header", expr("regexp_extract(raw_data, '^(.*?)\"\\s*:', 1)")) \
-    .withColumn("data", expr("regexp_extract(raw_data, ':(.*?)$', 1)")) \
-    .withColumn("header", regexp_replace(col("header"), r'[{}"]', '')) \
-    .withColumn("data", regexp_replace(col("data"), r'[{}"]', ''))
+# parsed_stream = kafka_stream.selectExpr("CAST(value AS STRING) as raw_data") \
+#     .withColumn("header", expr("regexp_extract(raw_data, '^(.*?)\"\\s*:', 1)")) \
+#     .withColumn("data", expr("regexp_extract(raw_data, ':(.*?)$', 1)")) \
+#     .withColumn("header", regexp_replace(col("header"), r'[{}"]', '')) \
+#     .withColumn("data", regexp_replace(col("data"), r'[{}"]', ''))
+
+parsed_stream = raw_stream \
+    .withColumn("timestamp", expr(r"regexp_extract(raw_data, '\"timestamp\":\\s*\"(.*?)\"', 1)")) \
+    .withColumn("P1_FCV01D", expr(r"regexp_extract(raw_data, '\"P1_FCV01D\":\\s*([0-9.]+)', 1)")) \
+    .withColumn("P1_FCV01Z", expr(r"regexp_extract(raw_data, '\"P1_FCV01Z\":\\s*([0-9.]+)', 1)")) \
+    .withColumn("P1_FCV03D", expr(r"regexp_extract(raw_data, '\"P1_FCV03D\":\\s*([0-9.]+)', 1)")) \
+    .withColumn("data_type", expr(r"regexp_extract(raw_data, '\"data_type\":\\s*\"(.*?)\"', 1)"))
+
+parsed_stream = parsed_stream \
+    .withColumn("P1_FCV01D", col("P1_FCV01D").cast("double")) \
+    .withColumn("P1_FCV01Z", col("P1_FCV01Z").cast("double")) \
+    .withColumn("P1_FCV03D", col("P1_FCV03D").cast("double"))
 
 # Split headers into columns
-parsed_stream = parsed_stream.withColumn("headers", split(col("header"), ";")) \
-    .withColumn("values", split(col("data"), ";"))
+# parsed_stream = parsed_stream.withColumn("headers", split(col("header"), ";")) \
+#     .withColumn("values", split(col("data"), ";"))
 
 # Select specific columns (adjust indices as per your schema)
 selected_columns = parsed_stream.select(
-    col("values").getItem(0).alias("timestamp"),
-    col("values").getItem(1).alias("P1_FCV01D"),
-    col("values").getItem(2).alias("P1_FCV01Z"),
-    col("values").getItem(3).alias("P1_FCV03D"),
-    col("values").getItem(-1).alias("data_type")
+    col("timestamp"),
+    col("P1_FCV01D"),
+    col("P1_FCV01Z"),
+    col("P1_FCV03D"),
+    col("data_type")
 )
-
 #I just put this here for debug, it logs into a json what is being parsed into the Spark schema, can be commented out later:
-parsed_stream.writeStream \
+# parsed_stream.writeStream \
+#     .outputMode("append") \
+#     .format("json") \
+#     .option("path", "debug/parsed_output") \
+#     .option("checkpointLocation", "debug/parsed_checkpoint") \
+#     .start()
+
+# Debugging: Save parsed output to a file
+selected_columns.writeStream \
     .outputMode("append") \
     .format("json") \
     .option("path", "debug/parsed_output") \
