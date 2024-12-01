@@ -87,15 +87,15 @@ logging.basicConfig(
 )
 
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-file_path = os.path.join(root_dir, 'data', 'hai-train1.csv')
+file_path = os.path.join(root_dir, 'data_corrected', 'hai-train1.csv')
 #file_path = "data/hai-train1.csv" 
-hai_data = pd.read_csv(file_path)
-file_path_test = os.path.join(root_dir, 'data', 'hai-test1_with_label.csv')
-hai_data_test = pd.read_csv(file_path_test)
+hai_data = pd.read_csv(file_path, delimiter=';')
+file_path_test = os.path.join(root_dir, 'data_corrected', 'hai-test1_with_label.csv')
+hai_data_test = pd.read_csv(file_path_test, delimiter=';')
 
-def validate_record(record):
-    required_keys = {'timestamp', 'data_type'}
-    return all(key in record for key in required_keys)
+#print("Train Data Columns:", hai_data.columns.tolist())
+#print("Test Data Columns:", hai_data_test.columns.tolist())
+
 
 def stream_data_in_batches(producer, topic, data, data_type, batch_size=1000, delay=0.2):
     try:
@@ -108,14 +108,15 @@ def stream_data_in_batches(producer, topic, data, data_type, batch_size=1000, de
 
             # Send each record in the batch to Kafka
             for record in batch:
-                record['data_type'] = data_type #----> since we're sending the train and test data into the same Kafka topic, we need to "label" them as train and test
+                #record['data_type'] = data_type #----> since we're sending the train and test data into the same Kafka topic, we need to "label" them as train and test
+
+                if "data_type" not in record:
+                    print(f"ERROR: 'data_type' field missing in record: {record}")
+                    continue
+                
+                #print("-----------------------------")
+                #print(json.dumps(record, indent=2))    
                 producer.send(topic, value=record)
-
-            if validate_record(record):  # Only send valid records
-                    producer.send(topic, value=record)
-            else:
-                logging.warning(f"Invalid record skipped: {record}")
-
             batch_count += 1
             records_sent += len(batch)
             logging.info(f"Batch {batch_count} sent. Records processed: {min(records_sent + batch_size, total_records)}/{total_records}")
@@ -134,10 +135,6 @@ def stream_data_in_batches(producer, topic, data, data_type, batch_size=1000, de
     except Exception as e:
         logging.error(f"An error occurred: {e}")
         print(f"An error occurred: {e}")
-    #finally:
-     #   producer.close()
-      #  logging.info("Kafka Producer closed.")
-       # print("Kafka Producer closed.")
 
 # Stream data to Kafka
 topic_name = 'hai-dataset'
