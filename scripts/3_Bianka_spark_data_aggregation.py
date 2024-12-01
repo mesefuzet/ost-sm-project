@@ -87,7 +87,7 @@ from pyspark.sql.types import StructType, StructField, StringType, DoubleType
 # ================================================
 ### Bia Data Aggregation (streaming Process) ####
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import split, col, window, avg, lit, regexp_replace, to_timestamp
+from pyspark.sql.functions import split, col, regexp_replace, expr
 
 # Initialize Spark Session
 spark = SparkSession.builder \
@@ -108,39 +108,35 @@ kafka_stream = spark.readStream \
     .option("startingOffsets", "earliest") \
     .load()
 
-# Parse semicolon-delimited data
+# Parse JSON keys and values
 parsed_stream = kafka_stream.selectExpr("CAST(value AS STRING) as raw_data") \
-    .withColumn("fields", split(col("raw_data"), ";")) \
-    .select(
-        col("fields").getItem(0).alias("timestamp"),
-        regexp_replace(col("fields").getItem(1), "\\.", ",").cast("double").alias("P1_FCV01D"),
-        regexp_replace(col("fields").getItem(2), "\\.", ",").cast("double").alias("P1_FCV01Z"),
-        regexp_replace(col("fields").getItem(3), "\\.", ",").cast("double").alias("P1_FCV03D"),
-        col("fields").getItem(-1).alias("data_type")  # Assuming 'data_type' is the last field
-    )
+    .withColumn("header", expr("regexp_extract(raw_data, '^(.*?)\"\\s*:', 1)")) \
+    .withColumn("data", expr("regexp_extract(raw_data, ':(.*?)$', 1)")) \
+    .withColumn("header", regexp_replace(col("header"), r'[{}"]', '')) \
+    .withColumn("data", regexp_replace(col("data"), r'[{}"]', ''))
 
-# Convert timestamp to proper format
-parsed_stream = parsed_stream.withColumn("timestamp", to_timestamp(col("timestamp"), "yyyy.MM.dd HH:mm"))
+# Split headers into columns
+parsed_stream = parsed_stream.withColumn("headers", split(col("header"), ";")) \
+    .withColumn("values", split(col("data"), ";"))
 
-# Perform Aggregation Using Sliding Window
-aggregated_stream = parsed_stream \
-    .groupBy(
-        window(col("timestamp"), "1 minute", "30 seconds"),
-        col("data_type")
-    ).agg(
-        avg("P1_FCV01D").alias("avg_P1_FCV01D"),
-        avg("P1_FCV01Z").alias("avg_P1_FCV01Z"),
-        avg("P1_FCV03D").alias("avg_P1_FCV03D")
-    )
+# Select specific columns (adjust indices as per your schema)
+selected_columns = parsed_stream.select(
+    col("values").getItem(0).alias("timestamp"),
+    col("values").getItem(1).alias("P1_FCV01D"),
+    col("values").getItem(2).alias("P1_FCV01Z"),
+    col("values").getItem(3).alias("P1_FCV03D"),
+    col("values").getItem(-1).alias("data_type")
+)
 
-# Output Aggregated Data to Console
-query = aggregated_stream.writeStream \
-    .outputMode("update") \
+# Output filtered data to console
+query = selected_columns.writeStream \
+    .outputMode("append") \
     .format("console") \
     .option("truncate", "false") \
     .start()
 
 query.awaitTermination()
+
 
 
 
