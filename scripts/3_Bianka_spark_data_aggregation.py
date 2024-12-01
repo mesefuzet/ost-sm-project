@@ -108,6 +108,14 @@ kafka_stream = spark.readStream \
     .option("startingOffsets", "earliest") \
     .load()
 
+#I just put this here for debug, it logs into a json what Spark gets from Kafka, can be commented out later:
+kafka_stream.selectExpr("CAST(value AS STRING)").writeStream \
+    .outputMode("append") \
+    .format("json") \
+    .option("path", "debug/raw_kafka_output") \
+    .option("checkpointLocation", "debug/raw_kafka_checkpoint") \
+    .start()
+
 # Parse JSON keys and values
 parsed_stream = kafka_stream.selectExpr("CAST(value AS STRING) as raw_data") \
     .withColumn("header", expr("regexp_extract(raw_data, '^(.*?)\"\\s*:', 1)")) \
@@ -127,6 +135,14 @@ selected_columns = parsed_stream.select(
     col("values").getItem(3).alias("P1_FCV03D"),
     col("values").getItem(-1).alias("data_type")
 )
+
+#I just put this here for debug, it logs into a json what is being parsed into the Spark schema, can be commented out later:
+parsed_stream.writeStream \
+    .outputMode("append") \
+    .format("json") \
+    .option("path", "debug/parsed_output") \
+    .option("checkpointLocation", "debug/parsed_checkpoint") \
+    .start()
 
 # Output filtered data to console
 query = selected_columns.writeStream \
