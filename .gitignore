@@ -1,3 +1,4 @@
 venv/
 spark_checkpoints/
 debug/
+data/
