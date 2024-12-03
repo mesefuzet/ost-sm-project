@@ -29,6 +29,7 @@ kafka_stream = spark.readStream \
     .option("kafka.bootstrap.servers", kafka_broker) \
     .option("subscribe", topic_name) \
     .option("startingOffsets", "earliest") \
+    .option("failOnDataLoss", "false") \
     .load()
 
 #I just put this here for debug, it logs into a json what Spark gets from Kafka, can be commented out later:
@@ -53,8 +54,8 @@ parsed_stream = raw_stream \
     .withColumn("P1_FCV01D", expr(r"regexp_extract(raw_data, '\"P1_FCV01D\":\\s*([0-9.]+)', 1)")) \
     .withColumn("P1_FCV01Z", expr(r"regexp_extract(raw_data, '\"P1_FCV01Z\":\\s*([0-9.]+)', 1)")) \
     .withColumn("P1_FCV03D", expr(r"regexp_extract(raw_data, '\"P1_FCV03D\":\\s*([0-9.]+)', 1)")) \
-    .withColumn("data_type", expr(r"regexp_extract(raw_data, '\"data_type\":\\s*\"(.*?)\"', 1)")) \
     .withColumn("x1003_24_SUM_OUT", expr(r"regexp_extract(raw_data, '\"x1003_24_SUM_OUT\":\\s*([0-9.]+)', 1)").cast("double")) \
+    .withColumn("data_type", expr(r"regexp_extract(raw_data, '\"data_type\":\\s*\"(.*?)\"', 1)")) \
     .withColumn("attack_label", expr(r"regexp_extract(raw_data, '\"attack_label\":\\s*([0-9]+)', 1)").cast("int"))
 
 parsed_stream = parsed_stream \
@@ -63,11 +64,15 @@ parsed_stream = parsed_stream \
     .withColumn("P1_FCV03D", col("P1_FCV03D").cast("double")) \
     .withColumn("P1_FCV03D", col("x1003_24_SUM_OUT").cast("double"))   
 
+#check the schema
 parsed_stream.printSchema()
 
-# Split headers into columns
-# parsed_stream = parsed_stream.withColumn("headers", split(col("header"), ";")) \
-#     .withColumn("values", split(col("data"), ";"))
+#train-test separation
+train_stream = parsed_stream.filter(col("data_type") == "train") \
+    .select("timestamp", "P1_FCV01D", "P1_FCV01Z", "P1_FCV03D", "x1003_24_SUM_OUT", "data_type")
+
+test_stream = parsed_stream.filter(col("data_type") == "test") \
+    .select("timestamp", "P1_FCV01D", "P1_FCV01Z", "P1_FCV03D", "x1003_24_SUM_OUT", "data_type", "attack_label")
 
 # Select specific columns (adjust indices as per your schema)
 selected_columns = parsed_stream.select(
@@ -75,16 +80,12 @@ selected_columns = parsed_stream.select(
     col("P1_FCV01D"),
     col("P1_FCV01Z"),
     col("P1_FCV03D"),
+    col("x1003_24_SUM_OUT"),
     col("data_type"),
-    col("x1003_24_SUM_OUT")
+    col("attack_label")
+    
 )
-#I just put this here for debug, it logs into a json what is being parsed into the Spark schema, can be commented out later:
-# parsed_stream.writeStream \
-#     .outputMode("append") \
-#     .format("json") \
-#     .option("path", "debug/parsed_output") \
-#     .option("checkpointLocation", "debug/parsed_checkpoint") \
-#     .start()
+
 
 # Debugging: Save parsed output to a file
 selected_columns.writeStream \
@@ -94,14 +95,43 @@ selected_columns.writeStream \
     .option("checkpointLocation", "debug/parsed_checkpoint") \
     .start()
 
-# Output filtered data to console
-query = selected_columns.writeStream \
+train_stream.writeStream \
+    .outputMode("append") \
+    .format("json") \
+    .option("path", "debug/train_output") \
+    .option("checkpointLocation", "debug/train_checkpoint") \
+    .start()
+
+test_stream.writeStream \
+    .outputMode("append") \
+    .format("json") \
+    .option("path", "debug/test_output") \
+    .option("checkpointLocation", "debug/test_checkpoint") \
+    .start()
+print("---------TRAIN DATA----------------")
+train_stream.writeStream \
     .outputMode("append") \
     .format("console") \
     .option("truncate", "false") \
     .start()
 
-query.awaitTermination()
+print("---------TEST DATA----------------")
+test_stream.writeStream \
+    .outputMode("append") \
+    .format("console") \
+    .option("truncate", "false") \
+    .start()
+
+spark.streams.awaitAnyTermination(60)
+
+# Output filtered data to console
+# query = selected_columns.writeStream \
+#     .outputMode("append") \
+#     .format("console") \
+#     .option("truncate", "false") \
+#     .start()
+
+#query.awaitTermination()
 # ===============================================
 ### EMESE 2 STREAMING PROCESSES ####
 # Data Exploration Tasks
