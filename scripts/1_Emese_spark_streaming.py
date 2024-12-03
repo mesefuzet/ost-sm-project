@@ -9,6 +9,7 @@ from pyspark.ml.feature import VectorAssembler
 from pyspark.sql.functions import min, max
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType
 from pyspark.sql.functions import regexp_replace
+from pyspark.sql import functions as F
 import time
 
 
@@ -189,8 +190,55 @@ test_stats.writeStream \
     .option("truncate", "false") \
     .start()
 
-# print("2. PROCESS: DATA NORMALIZATION")
+print("2. PROCESS: DATA NORMALIZATION")
 # 2. Normalize the Data (MinMax Scaling)
+# numeric_columns = ["P1_FCV01D", "P1_FCV01Z", "P1_FCV03D", "x1003_24_SUM_OUT"]
 
+# train_stats_query = train_stream.groupBy().agg(
+#     *[F.mean(col_name).alias(f"{col_name}_mean") for col_name in numeric_columns],
+#     *[F.stddev(col_name).alias(f"{col_name}_stddev") for col_name in numeric_columns]
+# ).writeStream \
+#     .outputMode("complete") \
+#     .format("console") \
+#     .option("truncate", "false") \
+#     .start()
+
+# test_stats_query = test_stream.groupBy().agg(
+#     *[F.mean(col_name).alias(f"{col_name}_mean") for col_name in numeric_columns],
+#     *[F.stddev(col_name).alias(f"{col_name}_stddev") for col_name in numeric_columns]
+# ).writeStream \
+#     .outputMode("complete") \
+#     .format("console") \
+#     .option("truncate", "false") \
+#     .start()
+
+# #normalize train
+# for col_name in numeric_columns:
+#     train_stream = train_stream.withColumn(
+#         f"{col_name}_normalized",
+#         (F.col(col_name) - train_stats_query.collect()[f"{col_name}_mean"]) /
+#         train_stats_query.collect()[f"{col_name}_stddev"]
+#     )
+
+# #normalize test with the same statistics as the train
+# for col_name in numeric_columns:
+#     test_stream = test_stream.withColumn(
+#         f"{col_name}_normalized",
+#         (F.col(col_name) - train_stats_query.collect()[f"{col_name}_mean"]) /
+#         train_stats_query.collect()[f"{col_name}_stddev"]
+#     )
+
+# # Write Normalized Train/Test Data to Console
+# train_stream.writeStream \
+#     .outputMode("append") \
+#     .format("console") \
+#     .option("truncate", "false") \
+#     .start()
+
+# test_stream.writeStream \
+#     .outputMode("append") \
+#     .format("console") \
+#     .option("truncate", "false") \
+#     .start()
 
 spark.streams.awaitAnyTermination()
