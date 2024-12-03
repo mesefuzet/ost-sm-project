@@ -42,12 +42,6 @@ kafka_stream.selectExpr("CAST(value AS STRING)").writeStream \
 
 raw_stream = kafka_stream.selectExpr("CAST(value AS STRING) as raw_data")
 
-# Parse JSON keys and values
-# parsed_stream = kafka_stream.selectExpr("CAST(value AS STRING) as raw_data") \
-#     .withColumn("header", expr("regexp_extract(raw_data, '^(.*?)\"\\s*:', 1)")) \
-#     .withColumn("data", expr("regexp_extract(raw_data, ':(.*?)$', 1)")) \
-#     .withColumn("header", regexp_replace(col("header"), r'[{}"]', '')) \
-#     .withColumn("data", regexp_replace(col("data"), r'[{}"]', ''))
 
 parsed_stream = raw_stream \
     .withColumn("timestamp", expr(r"regexp_extract(raw_data, '\"timestamp\":\\s*\"(.*?)\"', 1)")) \
@@ -122,16 +116,8 @@ test_stream.writeStream \
     .option("truncate", "false") \
     .start()
 
-spark.streams.awaitAnyTermination(60)
+spark.streams.awaitAnyTermination()
 
-# Output filtered data to console
-# query = selected_columns.writeStream \
-#     .outputMode("append") \
-#     .format("console") \
-#     .option("truncate", "false") \
-#     .start()
-
-#query.awaitTermination()
 # ===============================================
 ### EMESE 2 STREAMING PROCESSES ####
 # Data Exploration Tasks
