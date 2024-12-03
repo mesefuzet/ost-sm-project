@@ -53,12 +53,17 @@ parsed_stream = raw_stream \
     .withColumn("P1_FCV01D", expr(r"regexp_extract(raw_data, '\"P1_FCV01D\":\\s*([0-9.]+)', 1)")) \
     .withColumn("P1_FCV01Z", expr(r"regexp_extract(raw_data, '\"P1_FCV01Z\":\\s*([0-9.]+)', 1)")) \
     .withColumn("P1_FCV03D", expr(r"regexp_extract(raw_data, '\"P1_FCV03D\":\\s*([0-9.]+)', 1)")) \
-    .withColumn("data_type", expr(r"regexp_extract(raw_data, '\"data_type\":\\s*\"(.*?)\"', 1)"))
+    .withColumn("data_type", expr(r"regexp_extract(raw_data, '\"data_type\":\\s*\"(.*?)\"', 1)")) \
+    .withColumn("x1003_24_SUM_OUT", expr(r"regexp_extract(raw_data, '\"x1003_24_SUM_OUT\":\\s*([0-9.]+)', 1)").cast("double")) \
+    .withColumn("attack_label", expr(r"regexp_extract(raw_data, '\"attack_label\":\\s*([0-9]+)', 1)").cast("int"))
 
 parsed_stream = parsed_stream \
     .withColumn("P1_FCV01D", col("P1_FCV01D").cast("double")) \
     .withColumn("P1_FCV01Z", col("P1_FCV01Z").cast("double")) \
-    .withColumn("P1_FCV03D", col("P1_FCV03D").cast("double"))
+    .withColumn("P1_FCV03D", col("P1_FCV03D").cast("double")) \
+    .withColumn("P1_FCV03D", col("x1003_24_SUM_OUT").cast("double"))   
+
+parsed_stream.printSchema()
 
 # Split headers into columns
 # parsed_stream = parsed_stream.withColumn("headers", split(col("header"), ";")) \
@@ -70,7 +75,8 @@ selected_columns = parsed_stream.select(
     col("P1_FCV01D"),
     col("P1_FCV01Z"),
     col("P1_FCV03D"),
-    col("data_type")
+    col("data_type"),
+    col("x1003_24_SUM_OUT")
 )
 #I just put this here for debug, it logs into a json what is being parsed into the Spark schema, can be commented out later:
 # parsed_stream.writeStream \
