@@ -1,0 +1,14 @@
+services:
+  app:
+    build:
+      # Builds the Docker image from the Dockerfile in the current directory
+      context: .
+      dockerfile: Dockerfile
+    container_name: flaskapp # Name of the container
+    image: flaskapp/flaskappimage # Name of the image
+    ports:
+      - "5000:5000" # Expose the application on port 5000
+    volumes:
+      - .:/app # Mount the current directory to the /app directory inside the container
+    environment:
+      - FLASK_ENV=development # Set Flask environment to development for debugging (or production)
