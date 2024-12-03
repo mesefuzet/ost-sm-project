@@ -125,7 +125,17 @@ test_stream.writeStream \
     .option("truncate", "false") \
     .start()
 
+print("Train row count:")
+train_stream.select(count("*")).writeStream \
+    .outputMode("complete") \
+    .format("console") \
+    .start()
 
+print("Test row count:")
+test_stream.select(count("*")).writeStream \
+    .outputMode("complete") \
+    .format("console") \
+    .start()
 
 # ===============================================
 ### EMESE 2 STREAMING PROCESSES ####
@@ -153,6 +163,8 @@ missing_counts_test.writeStream \
     .format("console") \
     .option("truncate", "false") \
     .start()
+
+
 
 # Process 2: Statistics Calculation
 train_stats = train_stream.select(
