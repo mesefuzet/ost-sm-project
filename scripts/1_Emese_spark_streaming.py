@@ -9,6 +9,7 @@ from pyspark.ml.feature import VectorAssembler
 from pyspark.sql.functions import min, max
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType
 from pyspark.sql.functions import regexp_replace
+import time
 
 
 
@@ -103,6 +104,7 @@ test_stream.writeStream \
     .option("checkpointLocation", "debug/test_checkpoint") \
     .start()
 print("---------TRAIN DATA----------------")
+time.sleep(1)
 train_stream.writeStream \
     .outputMode("append") \
     .format("console") \
@@ -110,122 +112,67 @@ train_stream.writeStream \
     .start()
 
 print("---------TEST DATA----------------")
+time.sleep(1)
 test_stream.writeStream \
     .outputMode("append") \
     .format("console") \
     .option("truncate", "false") \
     .start()
 
-spark.streams.awaitAnyTermination()
+
 
 # ===============================================
 ### EMESE 2 STREAMING PROCESSES ####
 # Data Exploration Tasks
 # 1. Detect Missing Values & Basic Statistics
 
-# print("1. PROCESS: DETECTION OF MISSING VALUES & MAIN STATISTICS")
-# missing_counts_train = train_stream.select(
-#     [(count(when(isnan(c) | col(c).isNull(), c))).alias(c) for c in train_data.columns]
-# )
+print("1. PROCESS: DETECTION OF MISSING VALUES & MAIN STATISTICS")
+time.sleep(1)
+missing_counts_train = train_stream.select(
+    [(count(when(isnan(c) | col(c).isNull(), c))).alias(c) for c in train_stream.columns]
+)
 
-# missing_counts_test = test_stream.select(
-#     [(count(when(isnan(c) | col(c).isNull(), c))).alias(c) for c in test_data.columns]
-# )
+missing_counts_test = test_stream.select(
+    [(count(when(isnan(c) | col(c).isNull(), c))).alias(c) for c in test_stream.columns]
+)
 
-# #debug for missing values
-# missing_counts_train_query = missing_counts_train.writeStream \
-#     .outputMode("complete") \
-#     .format("console") \
-#     .option("truncate", "false") \
-#     .start()
+missing_counts_train.writeStream \
+    .outputMode("complete") \
+    .format("console") \
+    .option("truncate", "false") \
+    .start()
 
-# missing_counts_test_query = missing_counts_test.writeStream \
-#     .outputMode("complete") \
-#     .format("console") \
-#     .option("truncate", "false") \
-#     .start()
- 
-# train_stats = train_stream.select(
-#     mean(col("x1003_24_SUM_OUT")).alias("train_mean"),
-#     stddev(col("x1003_24_SUM_OUT")).alias("train_stddev")
-# )
+missing_counts_test.writeStream \
+    .outputMode("complete") \
+    .format("console") \
+    .option("truncate", "false") \
+    .start()
 
-# test_stats = test_stream.select(
-#     mean(col("x1003_24_SUM_OUT")).alias("test_mean"),
-#     stddev(col("x1003_24_SUM_OUT")).alias("test_stddev")
-# )
+# Process 2: Statistics Calculation
+train_stats = train_stream.select(
+    mean(col("x1003_24_SUM_OUT")).alias("train_mean"),
+    stddev(col("x1003_24_SUM_OUT")).alias("train_stddev")
+)
 
-# # Write statistics to the console for debugging
-# train_stats.writeStream \
-#     .outputMode("complete") \
-#     .format("console") \
-#     .option("truncate", "false") \
-#     .start()
+test_stats = test_stream.select(
+    mean(col("x1003_24_SUM_OUT")).alias("test_mean"),
+    stddev(col("x1003_24_SUM_OUT")).alias("test_stddev")
+)
 
-# test_stats.writeStream \
-#     .outputMode("complete") \
-#     .format("console") \
-#     .option("truncate", "false") \
-#     .start()
+train_stats.writeStream \
+    .outputMode("complete") \
+    .format("console") \
+    .option("truncate", "false") \
+    .start()
 
-# # Write statistics to the console (debugging)
-# train_stats_query = train_stats.writeStream \
-#     .outputMode("complete") \
-#     .format("console") \
-#     .option("truncate", "false") \
-#     .start()
-
-# test_stats_query = test_stats.writeStream \
-#     .outputMode("complete") \
-#     .format("console") \
-#     .option("truncate", "false") \
-#     .start()
+test_stats.writeStream \
+    .outputMode("complete") \
+    .format("console") \
+    .option("truncate", "false") \
+    .start()
 
 # print("2. PROCESS: DATA NORMALIZATION")
 # 2. Normalize the Data (MinMax Scaling)
 
 
-# assembler = VectorAssembler(inputCols=["x1003_24_SUM_OUT"], outputCol="features")
-# train_features = assembler.transform(train_data)
-# test_features = assembler.transform(test_data)
-
-# # test: static min and max
-# static_min = 0.0 
-# static_max = 200.0 
-
-
-# #min_val = train_data.agg(min("x1003_24_SUM_OUT")).collect()[0][0]
-# #max_val = train_data.agg(max("x1003_24_SUM_OUT")).collect()[0][0]
-
-# # Normalize using the min-max formula
-# scaled_train_data = train_data.withColumn(
-#     "scaled_features",
-#     (col("x1003_24_SUM_OUT") - lit(static_min)) / (lit(static_max) - lit(static_min))
-# )
-
-# scaled_test_data = test_data.withColumn(
-#     "scaled_features",
-#     (col("x1003_24_SUM_OUT") - lit(static_min)) / (lit(static_max) - lit(static_min))
-# )
-
-
-# #Write the Results to the Console (For Debugging)
-# scaled_train_query = scaled_train_data.select("timestamp", "scaled_features").writeStream \
-#     .outputMode("append") \
-#     .format("console") \
-#     .option("truncate", "false") \
-#     .start()
-
-# scaled_test_query = scaled_test_data.select("timestamp", "scaled_features").writeStream \
-#     .outputMode("append") \
-#     .format("console") \
-#     .option("truncate", "false") \
-#     .start()
-
-#await terminations so the code won't run until infinity
-# train_data_query.awaitTermination()
-# test_data_query.awaitTermination()
-# missing_counts_train_query.awaitTermination()
-# missing_counts_test_query.awaitTermination()
-# train_stats_query.awaitTermination()
-# test_stats_query.awaitTermination()
+spark.streams.awaitAnyTermination()
