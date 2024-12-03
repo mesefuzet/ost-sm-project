@@ -34,12 +34,12 @@ kafka_stream = spark.readStream \
     .load()
 
 #I just put this here for debug, it logs into a json what Spark gets from Kafka, can be commented out later:
-kafka_stream.selectExpr("CAST(value AS STRING)").writeStream \
-    .outputMode("append") \
-    .format("json") \
-    .option("path", "debug/raw_kafka_output") \
-    .option("checkpointLocation", "debug/raw_kafka_checkpoint") \
-    .start()
+# kafka_stream.selectExpr("CAST(value AS STRING)").writeStream \
+#     .outputMode("append") \
+#     .format("json") \
+#     .option("path", "debug/raw_kafka_output") \
+#     .option("checkpointLocation", "debug/raw_kafka_checkpoint") \
+#     .start()
 
 raw_stream = kafka_stream.selectExpr("CAST(value AS STRING) as raw_data")
 
@@ -57,10 +57,16 @@ parsed_stream = parsed_stream \
     .withColumn("P1_FCV01D", col("P1_FCV01D").cast("double")) \
     .withColumn("P1_FCV01Z", col("P1_FCV01Z").cast("double")) \
     .withColumn("P1_FCV03D", col("P1_FCV03D").cast("double")) \
-    .withColumn("P1_FCV03D", col("x1003_24_SUM_OUT").cast("double"))   
+    .withColumn("P1_FCV03D", col("x1003_24_SUM_OUT").cast("double"))
+
+#Filter out rows that are completely blank or contain only zeros in numeric columns
+parsed_stream = parsed_stream.filter(
+    (col("timestamp").isNotNull()) &
+    ((col("P1_FCV01D") != 0) | (col("P1_FCV01Z") != 0) | (col("P1_FCV03D") != 0) | (col("x1003_24_SUM_OUT") != 0))
+)
 
 #check the schema
-parsed_stream.printSchema()
+#parsed_stream.printSchema()
 
 #train-test separation
 train_stream = parsed_stream.filter(col("data_type") == "train") \
@@ -82,27 +88,27 @@ selected_columns = parsed_stream.select(
 )
 
 
-# Debugging: Save parsed output to a file
-selected_columns.writeStream \
-    .outputMode("append") \
-    .format("json") \
-    .option("path", "debug/parsed_output") \
-    .option("checkpointLocation", "debug/parsed_checkpoint") \
-    .start()
+# Debugging: Save parsed output to a file ---> when something is bad, we can comment this out and have a look at the log files in debug/
+# selected_columns.writeStream \
+#     .outputMode("append") \
+#     .format("json") \
+#     .option("path", "debug/parsed_output") \
+#     .option("checkpointLocation", "debug/parsed_checkpoint") \
+#     .start()
 
-train_stream.writeStream \
-    .outputMode("append") \
-    .format("json") \
-    .option("path", "debug/train_output") \
-    .option("checkpointLocation", "debug/train_checkpoint") \
-    .start()
+# train_stream.writeStream \
+#     .outputMode("append") \
+#     .format("json") \
+#     .option("path", "debug/train_output") \
+#     .option("checkpointLocation", "debug/train_checkpoint") \
+#     .start()
 
-test_stream.writeStream \
-    .outputMode("append") \
-    .format("json") \
-    .option("path", "debug/test_output") \
-    .option("checkpointLocation", "debug/test_checkpoint") \
-    .start()
+# test_stream.writeStream \
+#     .outputMode("append") \
+#     .format("json") \
+#     .option("path", "debug/test_output") \
+#     .option("checkpointLocation", "debug/test_checkpoint") \
+#     .start()
 print("---------TRAIN DATA----------------")
 time.sleep(1)
 train_stream.writeStream \
@@ -126,7 +132,7 @@ test_stream.writeStream \
 # Data Exploration Tasks
 # 1. Detect Missing Values & Basic Statistics
 
-print("1. PROCESS: DETECTION OF MISSING VALUES & MAIN STATISTICS")
+print("1. PROCESS: DETECTION OF REMAINING MISSING VALUES & MAIN STATISTICS")
 time.sleep(1)
 missing_counts_train = train_stream.select(
     [(count(when(isnan(c) | col(c).isNull(), c))).alias(c) for c in train_stream.columns]
