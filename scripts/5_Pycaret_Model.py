@@ -8,6 +8,8 @@ import pandas as pd
 from pycaret.anomaly import setup, create_model, assign_model, save_model
 import os
 import matplotlib.pyplot as plt
+import joblib
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 
 # File paths
 data_dir = "/content/drive/MyDrive/OST Stream Mining/"
@@ -46,8 +48,12 @@ save_model(model, model_path)
 print(f"Model saved at: {model_path}")
 
 
-
+#####################
 ### Visualiaztion ###
+#####################
+
+
+
 # File paths
 original_file = r"/content/drive/MyDrive/OST Stream Mining/hai-train1.csv"
 results_file = r"/content/drive/MyDrive/OST Stream Mining/train_with_anomalies_pycaret.csv"
@@ -85,4 +91,57 @@ plt.legend()
 plt.grid(alpha=0.3)
 plt.tight_layout()
 plt.show()
+
+
+#####################
+###  Evaulation   ###
+#####################
+
+# Note: It doesn't penalize if the model predicts everything normal (0 attack label) - so it shows really good metrics, altough it didn't detect anything
+
+# Paths to the test file and the saved model
+test_file_path = "/content/drive/MyDrive/OST Stream Mining/hai-test1_with_label.csv"
+model_path = "/content/drive/MyDrive/OST Stream Mining/iforest_model_pycaret.pkl"
+
+# Load the test dataset
+test_data = pd.read_csv(test_file_path, delimiter=";")
+
+# Parse timestamps and set as index
+test_data['timestamp'] = pd.to_datetime(test_data['timestamp'])
+test_data.set_index('timestamp', inplace=True)
+
+# Load the saved isolation forest model
+model = joblib.load(model_path)
+
+# Select the same features used for training
+selected_features = ["P1_FCV01D", "P1_FCV01Z", "P1_FCV03D", "x1003_24_SUM_OUT"]
+test_features = test_data[selected_features]
+
+# Predict anomalies (-1 = anomaly, 1 = normal)
+test_data['Anomaly_Score'] = model.decision_function(test_features)
+test_data['Anomaly'] = model.predict(test_features)
+
+# Map model predictions to 1 for anomalies, 0 for normal
+test_data['Anomaly'] = (test_data['Anomaly'] == -1).astype(int)
+
+# Ensure attack_label is an integer
+test_data['attack_label'] = test_data['attack_label'].astype(int)
+
+# Evaluate predictions against ground truth
+conf_matrix = confusion_matrix(test_data['attack_label'], test_data['Anomaly'])
+class_report = classification_report(test_data['attack_label'], test_data['Anomaly'], digits=4)
+accuracy = accuracy_score(test_data['attack_label'], test_data['Anomaly'])
+
+print("Confusion Matrix:")
+print(conf_matrix)
+
+print("\nClassification Report:")
+print(class_report)
+
+print(f"Accuracy: {accuracy:.4f}")
+
+# Save the test results with predictions
+test_data.to_csv("/content/drive/MyDrive/OST Stream Mining/test_with_predictions.csv")
+print("Test results with predictions saved to '/content/drive/MyDrive/OST Stream Mining/test_with_predictions.csv'")
+
 
