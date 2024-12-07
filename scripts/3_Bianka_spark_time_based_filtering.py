@@ -15,6 +15,17 @@ import time
 # ================================================
 ### Bia Time Based Filtering (streaming Process) ####
 
+### Note: Time period for filter should be discussed, currently the filter is: 2022-08-04 00:00:00 - 2022-08-06 00:00:00
+
+# Set Legacy Time Parser Policy ( to process timestamps correctly)
+spark = SparkSession.builder \
+    .appName("KafkaStreamProcessor") \
+    .master("local[*]") \
+    .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.1.3") \
+    .config("spark.sql.legacy.timeParserPolicy", "LEGACY") \
+    .getOrCreate()
+
+
 # Initialize Spark Session
 spark = SparkSession.builder \
     .appName("KafkaStreamProcessor") \
@@ -37,7 +48,6 @@ kafka_stream = spark.readStream \
 
 raw_stream = kafka_stream.selectExpr("CAST(value AS STRING) as raw_data")
 
-
 parsed_stream = raw_stream \
     .withColumn("timestamp", expr(r"regexp_extract(raw_data, '\"timestamp\":\\s*\"(.*?)\"', 1)")) \
     .withColumn("P1_FCV01D", expr(r"regexp_extract(raw_data, '\"P1_FCV01D\":\\s*([0-9.]+)', 1)")) \
@@ -53,16 +63,21 @@ parsed_stream = parsed_stream \
     .withColumn("P1_FCV03D", col("P1_FCV03D").cast("double")) \
     .withColumn("P1_FCV03D", col("x1003_24_SUM_OUT").cast("double"))
 
-#Filter out rows that are completely blank or contain only zeros in numeric columns
+# Filter out rows that are completely blank or contain only zeros in numeric columns
 parsed_stream = parsed_stream.filter(
     (col("timestamp").isNotNull()) &
     ((col("P1_FCV01D") != 0) | (col("P1_FCV01Z") != 0) | (col("P1_FCV03D") != 0) | (col("x1003_24_SUM_OUT") != 0))
 )
 
-#check the schema
-#parsed_stream.printSchema()
+# Time-based filtering: Define start and end times - TBD
+start_time = "2022-08-04 00:00:00"
+end_time = "2022-08-06 00:00:00"
 
-#train-test separation
+parsed_stream = parsed_stream \
+    .withColumn("timestamp", to_timestamp("timestamp", "yyyy.MM.dd HH:mm")) \
+    .filter((col("timestamp") >= start_time) & (col("timestamp") <= end_time))
+
+# Train-test separation
 train_stream = parsed_stream.filter(col("data_type") == "train") \
     .select("timestamp", "P1_FCV01D", "P1_FCV01Z", "P1_FCV03D", "x1003_24_SUM_OUT", "data_type")
 
@@ -78,8 +93,8 @@ selected_columns = parsed_stream.select(
     col("x1003_24_SUM_OUT"),
     col("data_type"),
     col("attack_label")
-    
 )
+
 print("---------TRAIN DATA----------------")
 time.sleep(1)
 train_stream.writeStream \
@@ -108,7 +123,7 @@ test_stream.select(count("*")).writeStream \
     .format("console") \
     .start()
 
-#I just put this here for debug, it logs into a json what is being parsed into the Spark schema, can be commented out later:
+# Debug: Logs into a JSON what is being parsed into the Spark schema
 parsed_stream.writeStream \
     .outputMode("append") \
     .format("json") \
@@ -126,4 +141,5 @@ query = selected_columns.writeStream \
 query.awaitTermination()
 
 spark.streams.awaitAnyTermination()
+
 
