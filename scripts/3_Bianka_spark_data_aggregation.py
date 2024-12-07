@@ -14,6 +14,7 @@ import time
 
 # ================================================
 ### Bia Data Aggregation (streaming Process) ####
+# Data aggregated by minute, one minute contains 60 records
 
 # Set Legacy Time Parser Policy ( to process timestamps correctly)
 spark = SparkSession.builder \
