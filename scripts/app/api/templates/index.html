@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Model Evaluation</title>
+    <style>
+        table {
+            border-collapse: collapse;
+            width: 80%;
+            margin: 20px auto;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .upload-form {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .upload-button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .upload-button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <h1>Model Evaluation Results</h1>
+
+    <!-- File Upload Form -->
+    <div class="upload-form">
+        <form action="/predict" method="POST" enctype="multipart/form-data">
+            <label for="file-upload">Choose a CSV file:</label>
+            <input type="file" name="file" id="file-upload" required>
+            <button type="submit" class="upload-button">Upload and Process</button>
+        </form>
+    </div>
+
+    {% if results %}
+    <h2>Classification Report</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Label</th>
+                <th>Precision</th>
+                <th>Recall</th>
+                <th>F1-Score</th>
+                <th>Support</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for label, metrics in results.report.items() if label not in ["accuracy", "macro avg", "weighted avg"] %}
+            <tr>
+                <td>{{ label }}</td>
+                <td>{{ metrics['precision'] }}</td>
+                <td>{{ metrics['recall'] }}</td>
+                <td>{{ metrics['f1-score'] }}</td>
+                <td>{{ metrics['support'] }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h2>Confusion Matrix</h2>
+    <table>
+        {% for row in results.confusion_matrix %}
+        <tr>
+            {% for cell in row %}
+            <td>{{ cell }}</td>
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    </table>
+
+    <!-- Display Overall Metrics -->
+    <div class="section-title">Overall Metrics</div>
+    <div class="metrics">
+        <p><strong>Precision:</strong> {{ results.precision | round(2) }}</p>
+        <p><strong>Recall:</strong> {{ results.recall | round(2) }}</p>
+        <p><strong>F1-Score:</strong> {{ results.f1_score | round(2) }}</p>
+    </div>
+    {% endif %}
+</body>
+</html>
