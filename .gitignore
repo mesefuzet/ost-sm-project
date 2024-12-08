@@ -1,4 +1,5 @@
-venv/
+venv_emese/
 spark_checkpoints/
 debug/
 data/
+*.db
