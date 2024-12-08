@@ -108,7 +108,6 @@ def stream_data_in_batches(producer, topic, data, data_type, batch_size=1000, de
 
             # Send each record in the batch to Kafka
             for record in batch:
-                #record['data_type'] = data_type #----> since we're sending the train and test data into the same Kafka topic, we need to "label" them as train and test
 
                 if "data_type" not in record:
                     print(f"ERROR: 'data_type' field missing in record: {record}")
