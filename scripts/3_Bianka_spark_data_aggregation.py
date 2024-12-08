@@ -8,86 +8,22 @@ from pyspark.sql.functions import from_json
 from pyspark.ml.feature import VectorAssembler
 from pyspark.sql.functions import min, max
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType
-
-
-# # Set up checkpoint location
-# checkpoint_location = os.path.join(os.getcwd(), "spark_checkpoints")
-# os.makedirs(checkpoint_location, exist_ok=True)
-
-# # Initialize Spark Session
-# spark = SparkSession.builder \
-#     .appName("KafkaSparkStreaming") \
-#     .master("local[*]") \
-#     .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.1.3") \
-#     .config("spark.sql.streaming.microBatchDurationMs", "5000") \
-#     .config("spark.sql.shuffle.partitions", "4") \
-#     .config("spark.sql.streaming.forceDeleteTempCheckpointLocation", "true") \
-#     .getOrCreate()
-
-# # Kafka Configuration
-# kafka_broker = "localhost:9092"
-# topic_name = "hai-dataset"
-
-# # Define Schema
-# train_schema = StructType() \
-#     .add("timestamp", StringType(), True) \
-#     .add("data_type", StringType(), True) \
-#     .add("P1_FCV01D", DoubleType(), True) \
-#     .add("P1_FCV01Z", DoubleType(), True) \
-#     .add("P1_FCV03D", DoubleType(), True) \
-#     .add("P1_FT01", DoubleType(), True) \
-#     .add("P1_FT01Z", DoubleType(), True) \
-#     .add("P1_FT02", DoubleType(), True) \
-#     .add("P1_FT02Z", DoubleType(), True) \
-#     .add("P1_FT03", DoubleType(), True) \
-#     .add("P1_FT03Z", DoubleType(), True) \
-#     .add("P1_LCV01D", DoubleType(), True) \
-#     .add("P1_LCV01Z", DoubleType(), True) \
-#     .add("P1_LIT01", DoubleType(), True) \
-#     .add("x1003_24_SUM_OUT", DoubleType(), True) \
-#     .add("attack_label", StringType(), True)  # Include attack_label for test data
-
-# # Read from Kafka
-# kafka_stream = spark.readStream \
-#     .format("kafka") \
-#     .option("kafka.bootstrap.servers", kafka_broker) \
-#     .option("subscribe", topic_name) \
-#     .option("startingOffsets", "earliest") \
-#     .load()
-
-# # Deserialize and Parse the Data
-# parsed_stream = kafka_stream.selectExpr("CAST(value AS STRING) as json_data") \
-#     .select(from_json(col("json_data"), train_schema).alias("data"))
-
-# # Filter Train and Test Data
-# train_data = parsed_stream.filter(col("data.data_type") == "train").select("data.*")
-# test_data = parsed_stream.filter(col("data.data_type") == "test").select("data.*")
-
-# # Start Writing Train Data Stream
-# train_data_query = train_data.writeStream \
-#     .outputMode("append") \
-#     .format("console") \
-#     .option("truncate", "false") \
-#     .option("checkpointLocation", os.path.join(checkpoint_location, "train_data")) \
-#     .start()
-
-# # Start Writing Test Data Stream
-# test_data_query = test_data.writeStream \
-#     .outputMode("append") \
-#     .format("console") \
-#     .option("truncate", "false") \
-#     .option("checkpointLocation", os.path.join(checkpoint_location, "test_data")) \
-#     .start()
-
-# # Await Termination for Streaming Queries
-# train_data_query.awaitTermination()
-# test_data_query.awaitTermination()
-
+from pyspark.sql.functions import col, expr, to_timestamp, window, avg, count
+from pyspark.sql import functions as F
+import time
 
 # ================================================
 ### Bia Data Aggregation (streaming Process) ####
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import split, col, regexp_replace, expr
+# Data aggregated by minute, one minute contains 60 records
+
+# Set Legacy Time Parser Policy ( to process timestamps correctly)
+spark = SparkSession.builder \
+    .appName("KafkaStreamProcessor") \
+    .master("local[*]") \
+    .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.1.3") \
+    .config("spark.sql.legacy.timeParserPolicy", "LEGACY") \
+    .getOrCreate()
+
 
 # Initialize Spark Session
 spark = SparkSession.builder \
@@ -106,37 +42,101 @@ kafka_stream = spark.readStream \
     .option("kafka.bootstrap.servers", kafka_broker) \
     .option("subscribe", topic_name) \
     .option("startingOffsets", "earliest") \
+    .option("failOnDataLoss", "false") \
     .load()
 
-#I just put this here for debug, it logs into a json what Spark gets from Kafka, can be commented out later:
-kafka_stream.selectExpr("CAST(value AS STRING)").writeStream \
-    .outputMode("append") \
-    .format("json") \
-    .option("path", "debug/raw_kafka_output") \
-    .option("checkpointLocation", "debug/raw_kafka_checkpoint") \
+raw_stream = kafka_stream.selectExpr("CAST(value AS STRING) as raw_data")
+
+parsed_stream = raw_stream \
+    .withColumn("timestamp", expr(r"regexp_extract(raw_data, '\"timestamp\":\\s*\"(.*?)\"', 1)")) \
+    .withColumn("P1_FCV01D", expr(r"regexp_extract(raw_data, '\"P1_FCV01D\":\\s*([0-9.]+)', 1)")) \
+    .withColumn("P1_FCV01Z", expr(r"regexp_extract(raw_data, '\"P1_FCV01Z\":\\s*([0-9.]+)', 1)")) \
+    .withColumn("P1_FCV03D", expr(r"regexp_extract(raw_data, '\"P1_FCV03D\":\\s*([0-9.]+)', 1)")) \
+    .withColumn("x1003_24_SUM_OUT", expr(r"regexp_extract(raw_data, '\"x1003_24_SUM_OUT\":\\s*([0-9.]+)', 1)").cast("double")) \
+    .withColumn("data_type", expr(r"regexp_extract(raw_data, '\"data_type\":\\s*\"(.*?)\"', 1)")) \
+    .withColumn("attack_label", expr(r"regexp_extract(raw_data, '\"attack_label\":\\s*([0-9]+)', 1)").cast("int"))
+
+parsed_stream = parsed_stream \
+    .withColumn("P1_FCV01D", col("P1_FCV01D").cast("double")) \
+    .withColumn("P1_FCV01Z", col("P1_FCV01Z").cast("double")) \
+    .withColumn("P1_FCV03D", col("P1_FCV03D").cast("double")) \
+    .withColumn("P1_FCV03D", col("x1003_24_SUM_OUT").cast("double"))
+
+# Filter out rows that are completely blank or contain only zeros in numeric columns
+parsed_stream = parsed_stream.filter(
+    (col("timestamp").isNotNull()) &
+    ((col("P1_FCV01D") != 0) | (col("P1_FCV01Z") != 0) | (col("P1_FCV03D") != 0) | (col("x1003_24_SUM_OUT") != 0))
+)
+
+# Train-test separation
+train_stream = parsed_stream.filter(col("data_type") == "train") \
+    .select("timestamp", "P1_FCV01D", "P1_FCV01Z", "P1_FCV03D", "x1003_24_SUM_OUT", "data_type")
+
+test_stream = parsed_stream.filter(col("data_type") == "test") \
+    .select("timestamp", "P1_FCV01D", "P1_FCV01Z", "P1_FCV03D", "x1003_24_SUM_OUT", "data_type", "attack_label")
+
+# Aggregation over a 1-minute window
+aggregated_stream = parsed_stream \
+    .withColumn("timestamp", to_timestamp("timestamp", "yyyy.MM.dd HH:mm")) \
+    .groupBy(window(col("timestamp"), "1 minute")) \
+    .agg(
+        F.avg("P1_FCV01D").alias("avg_P1_FCV01D"),
+        F.avg("P1_FCV01Z").alias("avg_P1_FCV01Z"),
+        F.avg("P1_FCV03D").alias("avg_P1_FCV03D"),
+        F.avg("x1003_24_SUM_OUT").alias("avg_x1003_24_SUM_OUT"),
+        F.count("*").alias("record_count")
+    )
+
+# Output aggregation to console
+aggregated_stream.writeStream \
+    .outputMode("complete") \
+    .format("console") \
+    .option("truncate", "false") \
     .start()
 
-# Parse JSON keys and values
-parsed_stream = kafka_stream.selectExpr("CAST(value AS STRING) as raw_data") \
-    .withColumn("header", expr("regexp_extract(raw_data, '^(.*?)\"\\s*:', 1)")) \
-    .withColumn("data", expr("regexp_extract(raw_data, ':(.*?)$', 1)")) \
-    .withColumn("header", regexp_replace(col("header"), r'[{}"]', '')) \
-    .withColumn("data", regexp_replace(col("data"), r'[{}"]', ''))
-
-# Split headers into columns
-parsed_stream = parsed_stream.withColumn("headers", split(col("header"), ";")) \
-    .withColumn("values", split(col("data"), ";"))
+# Check the schema
+# parsed_stream.printSchema()
 
 # Select specific columns (adjust indices as per your schema)
 selected_columns = parsed_stream.select(
-    col("values").getItem(0).alias("timestamp"),
-    col("values").getItem(1).alias("P1_FCV01D"),
-    col("values").getItem(2).alias("P1_FCV01Z"),
-    col("values").getItem(3).alias("P1_FCV03D"),
-    col("values").getItem(-1).alias("data_type")
+    col("timestamp"),
+    col("P1_FCV01D"),
+    col("P1_FCV01Z"),
+    col("P1_FCV03D"),
+    col("x1003_24_SUM_OUT"),
+    col("data_type"),
+    col("attack_label")
 )
 
-#I just put this here for debug, it logs into a json what is being parsed into the Spark schema, can be commented out later:
+print("---------TRAIN DATA----------------")
+time.sleep(1)
+train_stream.writeStream \
+    .outputMode("append") \
+    .format("console") \
+    .option("truncate", "false") \
+    .start()
+
+print("---------TEST DATA----------------")
+time.sleep(1)
+test_stream.writeStream \
+    .outputMode("append") \
+    .format("console") \
+    .option("truncate", "false") \
+    .start()
+
+print("Train row count:")
+train_stream.select(count("*")).writeStream \
+    .outputMode("complete") \
+    .format("console") \
+    .start()
+
+print("Test row count:")
+test_stream.select(count("*")).writeStream \
+    .outputMode("complete") \
+    .format("console") \
+    .start()
+
+# I just put this here for debug, it logs into a json what is being parsed into the Spark schema, can be commented out later:
 parsed_stream.writeStream \
     .outputMode("append") \
     .format("json") \
@@ -152,6 +152,9 @@ query = selected_columns.writeStream \
     .start()
 
 query.awaitTermination()
+
+spark.streams.awaitAnyTermination()
+
 
 
 
