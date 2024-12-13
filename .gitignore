@@ -3,3 +3,4 @@ spark_checkpoints/
 debug/
 data/
 *.db
+checkpoints/
