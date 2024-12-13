@@ -46,10 +46,10 @@ parsed_stream = parsed_stream.filter(
 
 # Predefined mean and stddev for each column
 static_stats = {
-    "P1_FCV01D": {"mean": 50.0, "stddev": 10.0},
-    "P1_FCV01Z": {"mean": 60.0, "stddev": 15.0},
-    "P1_FCV03D": {"mean": 70.0, "stddev": 20.0},
-    "x1003_24_SUM_OUT": {"mean": 80.0, "stddev": 25.0},
+    "P1_FCV01D": {"mean": 33.39, "stddev": 25.84},
+    "P1_FCV01Z": {"mean": 33.26, "stddev": 26.11},
+    "P1_FCV03D": {"mean": 53.87, "stddev": 2.87},
+    "x1003_24_SUM_OUT": {"mean": 30.72, "stddev": 0.98},
 }
 
 # CUSUM threshold
