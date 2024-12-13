@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000" #Expose Grafana on port 3000
+    volumes:
+      - ./grafana:/var/lib/grafana # Persist Grafana data (dashboards, configurations)
+      - ./plugins:/var/lib/grafana/plugins #for custom plugins
+      - ./:/data # Mount the root folder containing SQLite files
+    environment:
+      - GF_INSTALL_PLUGINS=frser-sqlite-datasource # Install SQLite plugin
+      - GF_SECURITY_ADMIN_USER=admin #admin username
+      - GF_SECURITY_ADMIN_PASSWORD=admin #admin password
+    restart: always

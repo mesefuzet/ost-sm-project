@@ -1,0 +1,44 @@
+
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+{
+  "manifestVersion": "2.0.0",
+  "signatureType": "community",
+  "signedByOrg": "frser",
+  "signedByOrgName": "frser",
+  "plugin": "frser-sqlite-datasource",
+  "version": "3.5.0",
+  "time": 1709905920402,
+  "keyId": "7e4d0c6a708866e7",
+  "files": {
+    "LICENSE": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+    "gpx_sqlite-datasource_linux_amd64": "448ade5d82691b822ca443bdc530a546bfa82fb00f2652eaf6e8986599d931f6",
+    "gpx_sqlite-datasource_linux_arm64": "10856b4cb0fd9743e6658ce7172cea804fb8518b3587283d16ad0e6a35e19d3f",
+    "README.md": "b311e76cedbee2ed366d69cbe2698788d173f970e094804a13f09fc4731679d5",
+    "gpx_sqlite-datasource_windows_amd64.exe": "a9e901a3db19b10fac3d2e9e41a1be927810fba25be26cd088afd9d0118cf866",
+    "gpx_sqlite-datasource_freebsd_amd64": "a77c5cec604f535edb65c9ad7fd69b3657617b616b2e1423d29106e6f3fddcfb",
+    "module.js.map": "5afb8aa8a512e4114bcae52b8b88c0c3119b80bb417599baef4c1fb19747498e",
+    "module.js": "8c0a4f18da876af2952793c7be6632b97b2aeb5b85e359e8e5409c6c3c2cd804",
+    "CHANGELOG.md": "379966cc4ba068a46f6caad16220b73081dedc4af762431be9cba627f21bbac0",
+    "gpx_sqlite-datasource_linux_arm": "548bd0a77554e31f2f19171e82c30c183a48c4955dfbb38b9c2117907ee697f0",
+    "plugin.json": "8b1655366e8d69a23d74afdc037e7d8ec0feef1d01f0f2de0b70163fe0cc8fc4",
+    "go_plugin_build_manifest": "907d414dead43b04b630283ac8fae56bc814d54e2b26deda4f6c6563e1642716",
+    "gpx_sqlite-datasource_darwin_arm64": "58f151d8af92290e8c705bab51a1ae978864cab0b59c216493347bc343d7a778",
+    "gpx_sqlite-datasource_darwin_amd64": "fc536bc9b1dbf83d86f2c790f50a289849dcc56a584dd98d82bdc69dc7473e6e",
+    "img/sine-wave-timeseries-panel-edit.png": "e52d90d3701117fba30a1a3be7b598c62dca672dc54b6260d19942af5f78d9bf",
+    "img/logo.svg": "0c351f39397f811a8ffe664474f1435f342b3be3657bd1ea6353e443acbecf6e",
+    "img/sine-wave-example-dashboard.png": "ccde2cf5e0cd648cdca99bcf8e295cefecbcf6e477645d09fceda3ee17af7737"
+  }
+}
+-----BEGIN PGP SIGNATURE-----
+Version: OpenPGP.js v4.10.11
+Comment: https://openpgpjs.org
+
+wrcEARMKAAYFAmXrGAAAIQkQfk0ManCIZucWIQTzOyW2kQdOhGNlcPN+TQxq
+cIhm51umAgjZ6mxAwwL0nKh6+uBEu4a61e1GqDDg/olcDxLJPLwFVPLwCfa0
+gCYk7Kd6c1nohzjNMFg+r87ik2Alsb0HgJhcAAIGJJOjhPmOW8v+5kcH94Uy
+pbC5/wwRaQR7TUPpArxOzMkATnM2XIsVIeck+Uv6mKNxfps4CSSzjULDrE0b
+mjxDZFc=
+=1KLj
+-----END PGP SIGNATURE-----
