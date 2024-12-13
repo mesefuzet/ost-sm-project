@@ -5,11 +5,10 @@ import os
 from sqlalchemy import create_engine, Column, Integer, Float, String
 from sqlalchemy.orm import declarative_base, sessionmaker
 import pandas as pd
-from river.drift import ADWIN
 import time
 
-if os.path.exists("adwin_results.db"):
-    os.remove("adwin_results.db")
+if os.path.exists("streaming_kmeans_result.db"):
+    os.remove("streaming_kmeans_result.db")
     print("[DEBUG] Database file deleted.")
 else:
     print("[DEBUG] No existing database file to delete.")
@@ -67,7 +66,7 @@ kafka_broker = "localhost:9092"
 topic_name = "hai-dataset"
 
 # Database Configuration
-DATABASE_URL = "sqlite:///adwin_results.db"
+DATABASE_URL = "sqlite:///streaming_kmeans_result.db"
 #train_schema = {"timestamp": String, "P1_FCV01D": Float, "P1_FCV01Z": Float, "P1_FCV03D": Float, "x1003_24_SUM_OUT": Float, "data_type": String}
 train_schema = {
     "timestamp": String,
@@ -181,6 +180,7 @@ test_stream = parsed_stream.filter(col("data_type") == "test") \
 print("2. PROCESS: STREAMING K-MEANS")
 time.sleep(1)
 
+#WRITE THE STREAMING K-MEANS HERE WITH WRITING BACK THE RESULTS TO THE DATASET
 
 
 try:
