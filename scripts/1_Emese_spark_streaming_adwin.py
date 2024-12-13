@@ -118,7 +118,7 @@ parsed_stream = parsed_stream \
     .withColumn("P1_FCV01D", col("P1_FCV01D").cast("double")) \
     .withColumn("P1_FCV01Z", col("P1_FCV01Z").cast("double")) \
     .withColumn("P1_FCV03D", col("P1_FCV03D").cast("double")) \
-    .withColumn("P1_FCV03D", col("x1003_24_SUM_OUT").cast("double"))
+    .withColumn("x1003_24_SUM_OUT", col("x1003_24_SUM_OUT").cast("double"))
 
 #Filter out rows that are completely blank or contain only zeros in numeric columns
 parsed_stream = parsed_stream.filter(
