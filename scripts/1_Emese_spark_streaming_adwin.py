@@ -216,13 +216,13 @@ def process_adwin_batch(df, epoch_id, is_train):
 print("DEBUG: INVOKE ADWIN FOR TRAIN")
 train_stream.writeStream \
     .foreachBatch(lambda df, epoch_id: process_adwin_batch(df, epoch_id, is_train=True)) \
-    .option("checkpointLocation", "checkpoints/train_checkpoint") \
+    .option("checkpointLocation", "checkpoints/train_checkpoint_new") \
     .start()
 
 print( "DEBUG: INVOKE ADWIN FOR TEST")
 test_stream.writeStream \
     .foreachBatch(lambda df, epoch_id: process_adwin_batch(df, epoch_id, is_train=False)) \
-    .option("checkpointLocation", "checkpoints/test_checkpoint") \
+    .option("checkpointLocation", "checkpoints/test_checkpoint_new") \
     .start()
 
 # def write_to_database(df, epoch_id, db_manager):

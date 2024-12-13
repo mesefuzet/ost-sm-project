@@ -173,12 +173,12 @@ def process_test_batch(df, epoch_id):
 #application of functions
 train_stream.writeStream \
     .foreachBatch(lambda df, epoch_id: process_train_batch(df, epoch_id)) \
-    .option("checkpointLocation", "checkpoints/train_kmeans_checkpoint") \
+    .option("checkpointLocation", "checkpoints/train_kmeans_checkpoint_new") \
     .start()
 
 test_stream.writeStream \
     .foreachBatch(lambda df, epoch_id: process_test_batch(df, epoch_id)) \
-    .option("checkpointLocation", "checkpoints/test_kmeans_checkpoint") \
+    .option("checkpointLocation", "checkpoints/test_kmeans_checkpoint_new") \
     .start()
 
 try:
