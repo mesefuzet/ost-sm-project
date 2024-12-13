@@ -4,3 +4,4 @@ debug/
 data/
 *.db
 checkpoints/
+.idea/
