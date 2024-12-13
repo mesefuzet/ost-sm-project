@@ -16,6 +16,7 @@ scripts_dir = os.path.dirname(os.path.abspath(__file__))
 producer_file = os.path.join(scripts_dir, "0_1_kafka_producer.py")
 consumer_file = os.path.join(scripts_dir, "0_2_kafka_consumer.py")
 spark_file = os.path.join(scripts_dir, "1_Emese_spark_streaming_streaming_KMeans.py")
+#spark_file = os.path.join(scripts_dir, "1_Emese_spark_streaming_adwin.py")
 
 try:
     # Start producer
