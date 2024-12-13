@@ -9,7 +9,7 @@ services:
     volumes:
       - ./grafana:/var/lib/grafana # Persist Grafana data (dashboards, configurations)
       - ./plugins:/var/lib/grafana/plugins #for custom plugins
-      - ./:/data # Mount the root folder containing SQLite files
+      - ./:/ost-sm-project # Mount the root folder containing SQLite files
     environment:
       - GF_INSTALL_PLUGINS=frser-sqlite-datasource # Install SQLite plugin
       - GF_SECURITY_ADMIN_USER=admin #admin username
