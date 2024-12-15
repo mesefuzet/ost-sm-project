@@ -1,19 +1,10 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, mean, stddev, count, isnan, when, lit, split, regexp_replace, expr, to_timestamp, window
-from pyspark.sql.types import StructType, StringType, DoubleType
-import json
-import os
-from pyspark.sql.functions import udf
-from pyspark.sql.functions import from_json
-from pyspark.ml.feature import VectorAssembler
-from pyspark.sql.functions import min, max
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType
-from pyspark.sql.functions import regexp_replace
-from pyspark.sql import functions as F
-import time
+from pyspark.sql.functions import col, mean, stddev, expr, lit, when
+from pyspark.sql.types import StringType, DoubleType, IntegerType
 from sqlalchemy import create_engine, Column, Integer, Float, String
 from sqlalchemy.orm import declarative_base, sessionmaker
 import pandas as pd
+import os
 
 if os.path.exists("hai_train_test.db"):
     os.remove("hai_train_test.db")
@@ -65,6 +56,7 @@ class DatabaseManager:
 spark = SparkSession.builder \
     .appName("KafkaStreamProcessor") \
     .master("local[*]") \
+    .config("spark.sql.warehouse.dir", "file:///C:/tmp") \
     .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.1.3") \
     .config("spark.sql.legacy.timeParserPolicy", "LEGACY") \
     .getOrCreate()
@@ -95,56 +87,43 @@ raw_stream = kafka_stream.selectExpr("CAST(value AS STRING) as raw_data")
 
 parsed_stream = raw_stream \
     .withColumn("timestamp", expr(r"regexp_extract(raw_data, '\"timestamp\":\\s*\"(.*?)\"', 1)").cast("string")) \
-    .withColumn("P1_FCV01D", expr(r"regexp_extract(raw_data, '\"P1_FCV01D\":\\s*([0-9.]+)', 1)")) \
-    .withColumn("P1_FCV01Z", expr(r"regexp_extract(raw_data, '\"P1_FCV01Z\":\\s*([0-9.]+)', 1)")) \
-    .withColumn("P1_FCV03D", expr(r"regexp_extract(raw_data, '\"P1_FCV03D\":\\s*([0-9.]+)', 1)")) \
+    .withColumn("P1_FCV01D", expr(r"regexp_extract(raw_data, '\"P1_FCV01D\":\\s*([0-9.]+)', 1)").cast("double")) \
+    .withColumn("P1_FCV01Z", expr(r"regexp_extract(raw_data, '\"P1_FCV01Z\":\\s*([0-9.]+)', 1)").cast("double")) \
+    .withColumn("P1_FCV03D", expr(r"regexp_extract(raw_data, '\"P1_FCV03D\":\\s*([0-9.]+)', 1)").cast("double")) \
     .withColumn("x1003_24_SUM_OUT", expr(r"regexp_extract(raw_data, '\"x1003_24_SUM_OUT\":\\s*([0-9.]+)', 1)").cast("double")) \
     .withColumn("data_type", expr(r"regexp_extract(raw_data, '\"data_type\":\\s*\"(.*?)\"', 1)").cast("string")) \
     .withColumn("attack_label", expr(r"regexp_extract(raw_data, '\"attack_label\":\\s*([0-9]+)', 1)").cast("int"))
-
-parsed_stream = parsed_stream \
-    .withColumn("P1_FCV01D", col("P1_FCV01D").cast("double")) \
-    .withColumn("P1_FCV01Z", col("P1_FCV01Z").cast("double")) \
-    .withColumn("P1_FCV03D", col("P1_FCV03D").cast("double")) \
-    .withColumn("P1_FCV03D", col("x1003_24_SUM_OUT").cast("double"))
 
 parsed_stream = parsed_stream.filter(
     (col("timestamp").isNotNull()) &
     ((col("P1_FCV01D") != 0) | (col("P1_FCV01Z") != 0) | (col("P1_FCV03D") != 0) | (col("x1003_24_SUM_OUT") != 0))
 )
 
-train_stream = parsed_stream.filter(col("data_type") == "train") \
-    .select("timestamp", "P1_FCV01D", "P1_FCV01Z", "P1_FCV03D", "x1003_24_SUM_OUT", "data_type")
+train_stream = parsed_stream.filter(col("data_type") == "train")
 
-test_stream = parsed_stream.filter(col("data_type") == "test") \
-    .select("timestamp", "P1_FCV01D", "P1_FCV01Z", "P1_FCV03D", "x1003_24_SUM_OUT", "data_type", "attack_label")
+test_stream = parsed_stream.filter(col("data_type") == "test")
 
-# ==== ADDED PART: THRESHOLD-BASED ANOMALY DETECTION AND CLASSIFICATION ====
-
-# Calculate thresholds for anomaly detection
-threshold_multiplier = 3  # Using 3 standard deviations as threshold
-train_stats_row = train_stream.select(
+# Precompute thresholds from a batch DataFrame
+train_stats = train_stream.groupBy().agg(
     mean(col("x1003_24_SUM_OUT")).alias("train_mean"),
     stddev(col("x1003_24_SUM_OUT")).alias("train_stddev")
 ).collect()[0]
-mean_val = train_stats_row["train_mean"]
-stddev_val = train_stats_row["train_stddev"]
 
+mean_val = train_stats["train_mean"]
+stddev_val = train_stats["train_stddev"]
+threshold_multiplier = 3
 upper_threshold = mean_val + threshold_multiplier * stddev_val
 lower_threshold = mean_val - threshold_multiplier * stddev_val
 
-# Add anomaly detection column
+# Add anomaly detection logic
 anomaly_flagged_stream = test_stream.withColumn(
     "anomaly_flag",
-    (col("x1003_24_SUM_OUT") > upper_threshold) | (col("x1003_24_SUM_OUT") < lower_threshold)
-)
-
-# Add anomaly classification column
-classified_anomalies_stream = anomaly_flagged_stream.withColumn(
+    (col("x1003_24_SUM_OUT") > lit(upper_threshold)) | (col("x1003_24_SUM_OUT") < lit(lower_threshold))
+).withColumn(
     "anomaly_class",
-    F.when(col("x1003_24_SUM_OUT") > upper_threshold, lit("High"))
-     .when(col("x1003_24_SUM_OUT") < lower_threshold, lit("Low"))
-     .otherwise(lit("Normal"))
+    when(col("x1003_24_SUM_OUT") > lit(upper_threshold), lit("High"))
+    .when(col("x1003_24_SUM_OUT") < lit(lower_threshold), lit("Low"))
+    .otherwise(lit("Normal"))
 )
 
 # Save anomalies into the database
@@ -169,10 +148,9 @@ def write_anomalies_to_database(df, epoch_id):
     except Exception as e:
         print(f"Error writing anomalies: {e}")
 
-classified_anomalies_stream.writeStream \
+query = anomaly_flagged_stream.writeStream \
     .foreachBatch(lambda df, epoch_id: write_anomalies_to_database(df, epoch_id)) \
+    .outputMode("append") \
     .start()
-
-# ==== END OF ADDED PART ====
 
 spark.streams.awaitAnyTermination()
