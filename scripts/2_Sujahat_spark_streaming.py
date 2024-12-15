@@ -1,29 +1,21 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, mean, stddev, count, isnan, when, lit, split, regexp_replace, expr, to_timestamp, window
-from pyspark.sql.types import StructType, StringType, DoubleType
-import json
-import os
-from pyspark.sql.functions import udf
-from pyspark.sql.functions import from_json
-from pyspark.ml.feature import VectorAssembler
-from pyspark.sql.functions import min, max
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType
-from pyspark.sql.functions import regexp_replace
-from pyspark.sql import functions as F
-import time
+from pyspark.sql.functions import col, mean, stddev, expr, lit, when
 from sqlalchemy import create_engine, Column, Integer, Float, String
 from sqlalchemy.orm import declarative_base, sessionmaker
 import pandas as pd
+import os
 
+# Remove existing database file
 if os.path.exists("hai_train_test.db"):
     os.remove("hai_train_test.db")
     print("[DEBUG] Database file deleted.")
 else:
     print("[DEBUG] No existing database file to delete.")
 
-# SQLAlchemy DatabaseManager class
+# SQLAlchemy Base
 Base = declarative_base()
 
+# DatabaseManager class
 class DatabaseManager:
     def __init__(self, db_url: str, table_name: str, schema: dict):
         self.engine = create_engine(db_url)
@@ -65,6 +57,7 @@ class DatabaseManager:
 spark = SparkSession.builder \
     .appName("KafkaStreamProcessor") \
     .master("local[*]") \
+    .config("spark.sql.warehouse.dir", "file:///C:/tmp") \
     .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.1.3") \
     .config("spark.sql.legacy.timeParserPolicy", "LEGACY") \
     .getOrCreate()
@@ -75,79 +68,6 @@ topic_name = "hai-dataset"
 
 # Database Configuration
 DATABASE_URL = "sqlite:///hai_train_test.db"
-train_schema = {"timestamp": String, "P1_FCV01D": Float, "P1_FCV01Z": Float, "P1_FCV03D": Float, "x1003_24_SUM_OUT": Float, "data_type": String}
-test_schema = {**train_schema, "attack_label": Integer}
-
-# Database manager configuration
-train_db = DatabaseManager(DATABASE_URL, "train", train_schema)
-test_db = DatabaseManager(DATABASE_URL, "test", test_schema)
-
-# Read from Kafka
-kafka_stream = spark.readStream \
-    .format("kafka") \
-    .option("kafka.bootstrap.servers", kafka_broker) \
-    .option("subscribe", topic_name) \
-    .option("startingOffsets", "earliest") \
-    .option("failOnDataLoss", "false") \
-    .load()
-
-raw_stream = kafka_stream.selectExpr("CAST(value AS STRING) as raw_data")
-
-parsed_stream = raw_stream \
-    .withColumn("timestamp", expr(r"regexp_extract(raw_data, '\"timestamp\":\\s*\"(.*?)\"', 1)").cast("string")) \
-    .withColumn("P1_FCV01D", expr(r"regexp_extract(raw_data, '\"P1_FCV01D\":\\s*([0-9.]+)', 1)")) \
-    .withColumn("P1_FCV01Z", expr(r"regexp_extract(raw_data, '\"P1_FCV01Z\":\\s*([0-9.]+)', 1)")) \
-    .withColumn("P1_FCV03D", expr(r"regexp_extract(raw_data, '\"P1_FCV03D\":\\s*([0-9.]+)', 1)")) \
-    .withColumn("x1003_24_SUM_OUT", expr(r"regexp_extract(raw_data, '\"x1003_24_SUM_OUT\":\\s*([0-9.]+)', 1)").cast("double")) \
-    .withColumn("data_type", expr(r"regexp_extract(raw_data, '\"data_type\":\\s*\"(.*?)\"', 1)").cast("string")) \
-    .withColumn("attack_label", expr(r"regexp_extract(raw_data, '\"attack_label\":\\s*([0-9]+)', 1)").cast("int"))
-
-parsed_stream = parsed_stream \
-    .withColumn("P1_FCV01D", col("P1_FCV01D").cast("double")) \
-    .withColumn("P1_FCV01Z", col("P1_FCV01Z").cast("double")) \
-    .withColumn("P1_FCV03D", col("P1_FCV03D").cast("double")) \
-    .withColumn("P1_FCV03D", col("x1003_24_SUM_OUT").cast("double"))
-
-parsed_stream = parsed_stream.filter(
-    (col("timestamp").isNotNull()) &
-    ((col("P1_FCV01D") != 0) | (col("P1_FCV01Z") != 0) | (col("P1_FCV03D") != 0) | (col("x1003_24_SUM_OUT") != 0))
-)
-
-train_stream = parsed_stream.filter(col("data_type") == "train") \
-    .select("timestamp", "P1_FCV01D", "P1_FCV01Z", "P1_FCV03D", "x1003_24_SUM_OUT", "data_type")
-
-test_stream = parsed_stream.filter(col("data_type") == "test") \
-    .select("timestamp", "P1_FCV01D", "P1_FCV01Z", "P1_FCV03D", "x1003_24_SUM_OUT", "data_type", "attack_label")
-
-# ==== ADDED PART: THRESHOLD-BASED ANOMALY DETECTION AND CLASSIFICATION ====
-
-# Calculate thresholds for anomaly detection
-threshold_multiplier = 3  # Using 3 standard deviations as threshold
-train_stats_row = train_stream.select(
-    mean(col("x1003_24_SUM_OUT")).alias("train_mean"),
-    stddev(col("x1003_24_SUM_OUT")).alias("train_stddev")
-).collect()[0]
-mean_val = train_stats_row["train_mean"]
-stddev_val = train_stats_row["train_stddev"]
-
-upper_threshold = mean_val + threshold_multiplier * stddev_val
-lower_threshold = mean_val - threshold_multiplier * stddev_val
-
-# Add anomaly detection column
-anomaly_flagged_stream = test_stream.withColumn(
-    "anomaly_flag",
-    (col("x1003_24_SUM_OUT") > upper_threshold) | (col("x1003_24_SUM_OUT") < lower_threshold)
-)
-
-# Add anomaly classification column
-classified_anomalies_stream = anomaly_flagged_stream.withColumn(
-    "anomaly_class",
-    F.when(col("x1003_24_SUM_OUT") > upper_threshold, lit("High"))
-     .when(col("x1003_24_SUM_OUT") < lower_threshold, lit("Low"))
-     .otherwise(lit("Normal"))
-)
-
-# Save anomalies into the database
 anomalies_schema = {
     "timestamp": String,
     "P1_FCV01D": Float,
@@ -159,6 +79,62 @@ anomalies_schema = {
 }
 anomalies_db = DatabaseManager(DATABASE_URL, "anomalies", anomalies_schema)
 
+# Precompute thresholds from a batch DataFrame
+train_batch_df = spark.read \
+    .format("kafka") \
+    .option("kafka.bootstrap.servers", kafka_broker) \
+    .option("subscribe", topic_name) \
+    .option("startingOffsets", "earliest") \
+    .load() \
+    .selectExpr("CAST(value AS STRING) as raw_data") \
+    .withColumn("x1003_24_SUM_OUT", expr(r"regexp_extract(raw_data, '\"x1003_24_SUM_OUT\":\\s*([0-9.]+)', 1)").cast("double"))
+
+train_stats_row = train_batch_df.select(
+    mean(col("x1003_24_SUM_OUT")).alias("train_mean"),
+    stddev(col("x1003_24_SUM_OUT")).alias("train_stddev")
+).collect()[0]
+
+mean_val = train_stats_row["train_mean"]
+stddev_val = train_stats_row["train_stddev"]
+threshold_multiplier = 3
+upper_threshold = mean_val + threshold_multiplier * stddev_val
+lower_threshold = mean_val - threshold_multiplier * stddev_val
+
+# Read Kafka Stream
+kafka_stream = spark.readStream \
+    .format("kafka") \
+    .option("kafka.bootstrap.servers", kafka_broker) \
+    .option("subscribe", topic_name) \
+    .option("startingOffsets", "latest") \
+    .option("failOnDataLoss", "false") \
+    .load()
+
+raw_stream = kafka_stream.selectExpr("CAST(value AS STRING) as raw_data")
+
+# Parse and filter the stream
+parsed_stream = raw_stream \
+    .withColumn("timestamp", expr(r"regexp_extract(raw_data, '\"timestamp\":\\s*\"(.*?)\"', 1)").cast("string")) \
+    .withColumn("P1_FCV01D", expr(r"regexp_extract(raw_data, '\"P1_FCV01D\":\\s*([0-9.]+)', 1)").cast("double")) \
+    .withColumn("P1_FCV01Z", expr(r"regexp_extract(raw_data, '\"P1_FCV01Z\":\\s*([0-9.]+)', 1)").cast("double")) \
+    .withColumn("P1_FCV03D", expr(r"regexp_extract(raw_data, '\"P1_FCV03D\":\\s*([0-9.]+)', 1)").cast("double")) \
+    .withColumn("x1003_24_SUM_OUT", expr(r"regexp_extract(raw_data, '\"x1003_24_SUM_OUT\":\\s*([0-9.]+)', 1)").cast("double")) \
+    .filter(
+        (col("timestamp").isNotNull()) &
+        ((col("P1_FCV01D") != 0) | (col("P1_FCV01Z") != 0) | (col("P1_FCV03D") != 0) | (col("x1003_24_SUM_OUT") != 0))
+    )
+
+# Add anomaly detection logic
+anomaly_flagged_stream = parsed_stream.withColumn(
+    "anomaly_flag",
+    (col("x1003_24_SUM_OUT") > lit(upper_threshold)) | (col("x1003_24_SUM_OUT") < lit(lower_threshold))
+).withColumn(
+    "anomaly_class",
+    when(col("x1003_24_SUM_OUT") > lit(upper_threshold), lit("High"))
+    .when(col("x1003_24_SUM_OUT") < lit(lower_threshold), lit("Low"))
+    .otherwise(lit("Normal"))
+)
+
+# Write anomalies to the database
 def write_anomalies_to_database(df, epoch_id):
     """Write anomaly batch to database."""
     try:
@@ -169,10 +145,10 @@ def write_anomalies_to_database(df, epoch_id):
     except Exception as e:
         print(f"Error writing anomalies: {e}")
 
-classified_anomalies_stream.writeStream \
+query = anomaly_flagged_stream.writeStream \
     .foreachBatch(lambda df, epoch_id: write_anomalies_to_database(df, epoch_id)) \
+    .outputMode("append") \
     .start()
 
-# ==== END OF ADDED PART ====
-
-spark.streams.awaitAnyTermination()
+# Await termination
+query.awaitTermination()
