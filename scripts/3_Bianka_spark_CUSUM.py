@@ -105,7 +105,7 @@ class DatabaseManager:
         Base.metadata.create_all(self.engine)
 
     def bulk_insert(self, df: pd.DataFrame):
-        """Insert multiple records into the database."""
+        """Insert multiple records into the database in chunks."""
         session = self.Session()
         try:
             records = [self.model(**row.to_dict()) for _, row in df.iterrows()]
@@ -113,7 +113,7 @@ class DatabaseManager:
             session.commit()
         except Exception as e:
             session.rollback()
-            print(f"Error inserting data: {e}")
+            print(f"[ERROR] Error inserting data into database: {e}")
         finally:
             session.close()
 
@@ -147,7 +147,7 @@ database_manager = DatabaseManager(
     }
 )
 
-# Write anomalies to the database
+# Write anomalies to the database with chunk-based insertion
 def write_to_database(batch_df, batch_id):
     # Select only columns defined in the schema
     selected_columns = [
@@ -157,13 +157,25 @@ def write_to_database(batch_df, batch_id):
         "x1003_24_SUM_OUT", "CUSUM_x1003_24_SUM_OUT", "Anomaly_x1003_24_SUM_OUT",
         "data_type", "attack_label"
     ]
-    full_df = batch_df.select(*selected_columns)
     
-    # Convert to Pandas for insertion into the database
-    full_pd_df = full_df.toPandas()
-    if not full_pd_df.empty:
-        database_manager.bulk_insert(full_pd_df)
+    # Convert Spark DataFrame to Pandas DataFrame
+    try:
+        full_pd_df = batch_df.select(*selected_columns).toPandas()
+        
+        if not full_pd_df.empty:
+            print(f"[DEBUG] Batch {batch_id}: Inserting {len(full_pd_df)} records...")
+            # Chunk-based insertion
+            chunk_size = 10000  # Define chunk size
+            for start_idx in range(0, len(full_pd_df), chunk_size):
+                chunk = full_pd_df.iloc[start_idx:start_idx + chunk_size]
+                database_manager.bulk_insert(chunk)
+                print(f"[DEBUG] Batch {batch_id}: Inserted chunk starting at index {start_idx}.")
+        else:
+            print(f"[DEBUG] Batch {batch_id}: No data to insert.")
+    except Exception as e:
+        print(f"[ERROR] Batch {batch_id}: Error processing data for database insertion: {e}")
 
+# Stream query to process data
 query = parsed_stream.writeStream \
     .foreachBatch(write_to_database) \
     .outputMode("append") \
