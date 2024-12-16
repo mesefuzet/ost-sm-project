@@ -1,24 +1,11 @@
-
 from pyspark.sql import SparkSession
 from pyspark.sql import Window
-from pyspark.sql.functions import col, when, lag, abs, lit, expr, avg, to_timestamp, window, percentile_approx
-from pyspark.sql.types import DoubleType
-import pyspark.sql.functions as F
-import time
-from pyspark.sql.functions import udf
-import numpy as np
-from pyspark.sql.types import DoubleType
-import traceback
-#--------------------------------------------------------------------------------------------------------------------------------------
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, lag, expr
-from pyspark.sql.window import Window
-import numpy as np
-from pyspark.sql.functions import udf
-from pyspark.sql.types import DoubleType, TimestampType, StringType
-import pandas as pd
+from pyspark.sql.functions import col, when, lag, expr
+from pyspark.sql.types import DoubleType, StringType, IntegerType
 from sqlalchemy import create_engine, Column, Integer, Float, String
 from sqlalchemy.orm import declarative_base, sessionmaker
+import pandas as pd
+import pyspark.sql.functions as F
 
 # Initialize Spark Session
 spark = SparkSession.builder \
@@ -51,32 +38,18 @@ raw_stream = kafka_stream.selectExpr("CAST(value AS STRING) as raw_data")
 parsed_stream = raw_stream \
     .withColumn("timestamp", expr(r"regexp_extract(raw_data, '\"timestamp\":\\s*\"(.*?)\"', 1)")) \
     .withColumn("P1_FCV01D", expr(r"regexp_extract(raw_data, '\"P1_FCV01D\":\\s*([0-9.]+)', 1)").cast(DoubleType())) \
-    .withColumn("P1_FCV01Z", expr(r"regexp_extract(raw_data, '\"P1_FCV01Z\":\\s*([0-9.]+)', 1)").cast(DoubleType())) \
-    .withColumn("P1_FCV03D", expr(r"regexp_extract(raw_data, '\"P1_FCV03D\":\\s*([0-9.]+)', 1)").cast(DoubleType())) \
-    .withColumn("x1003_24_SUM_OUT", expr(r"regexp_extract(raw_data, '\"x1003_24_SUM_OUT\":\\s*([0-9.]+)', 1)").cast(DoubleType())) \
     .withColumn("data_type", expr(r"regexp_extract(raw_data, '\"data_type\":\\s*\"(.*?)\"', 1)")) \
-    .withColumn("attack_label", expr(r"regexp_extract(raw_data, '\"attack_label\":\\s*([0-9]+)', 1)").cast("int"))
+    .withColumn("attack_label", expr(r"regexp_extract(raw_data, '\"attack_label\":\\s*([0-9]+)', 1)").cast(IntegerType()))
 
-
-# Filter rows with valid timestamps and any of the required numeric columns
-parsed_stream = parsed_stream.filter(
-    (col("timestamp").isNotNull()) &
-    ((col("P1_FCV01D").isNotNull()) |
-     (col("P1_FCV01Z").isNotNull()) |
-     (col("P1_FCV03D").isNotNull()) |
-     (col("x1003_24_SUM_OUT").isNotNull()))
-)
+# Filter rows with valid timestamps and numeric columns
 parsed_stream = parsed_stream.filter(
     col("timestamp").isNotNull() & col("P1_FCV01D").isNotNull()
 )
 
-relevant_stream = parsed_stream.select("timestamp", "P1_FCV01D")
-
+relevant_stream = parsed_stream.select("timestamp", "P1_FCV01D", "data_type", "attack_label")
 
 # EWMA Parameters
 alpha = 0.2  # Smoothing factor
-global_ewma_state = {"P1_FCV01D": None}  # Holds the running EWMA value across batches
-
 
 # SQLAlchemy DatabaseManager class
 Base = declarative_base()
@@ -121,14 +94,15 @@ class DatabaseManager:
             print(f"[ERROR] Error inserting data into database: {e}")
         finally:
             session.close()
-   
+
 
 db_manager = DatabaseManager("sqlite:///EWMA.db", "EWMA_Table", {
     "timestamp": String,
     "P1_FCV01D": Float,
     "EWMA": Float,
+    "data_type": String,
+    "attack_label": Integer  # Include attack_label column
 })
-
 
 # Updated EWMA calculation using Spark-native functions
 def calculate_ewma(df, alpha):
@@ -136,17 +110,16 @@ def calculate_ewma(df, alpha):
     window_spec = Window.orderBy("timestamp")
 
     # Add a lagged column for the previous value of P1_FCV01D
-    df = df.withColumn("lagged_P1_FCV01D", F.lag("P1_FCV01D").over(window_spec))
+    df = df.withColumn("lagged_P1_FCV01D", lag("P1_FCV01D").over(window_spec))
 
     # Calculate the EWMA
     df = df.withColumn(
         "EWMA",
-        F.when(F.col("lagged_P1_FCV01D").isNull(), F.col("P1_FCV01D"))  # First row: EWMA = current value
-        .otherwise(
-            alpha * F.col("P1_FCV01D") + (1 - alpha) * F.col("lagged_P1_FCV01D")
-        )
+        when(col("lagged_P1_FCV01D").isNull(), col("P1_FCV01D"))  # First row: EWMA = current value
+        .otherwise(alpha * col("P1_FCV01D") + (1 - alpha) * col("lagged_P1_FCV01D"))
     )
     return df
+
 
 def process_ewma_batch(df, epoch_id):
     print(f"[DEBUG] Processing EWMA batch, Epoch: {epoch_id}")
@@ -155,10 +128,10 @@ def process_ewma_batch(df, epoch_id):
         updated_df = calculate_ewma(df, alpha)
 
         # Collect rows as an iterator
-        records = updated_df.select("timestamp", "P1_FCV01D", "EWMA").toLocalIterator()
+        records = updated_df.select("timestamp", "P1_FCV01D", "EWMA", "data_type", "attack_label").toLocalIterator()
 
         # Convert to list of dictionaries for database insertion
-        data = [{"timestamp": row["timestamp"], "P1_FCV01D": row["P1_FCV01D"], "EWMA": row["EWMA"]} for row in records]
+        data = [{"timestamp": row["timestamp"], "P1_FCV01D": row["P1_FCV01D"], "EWMA": row["EWMA"], "data_type": row["data_type"], "attack_label": row["attack_label"]} for row in records]
 
         # Insert into the database
         db_manager.bulk_insert(pd.DataFrame(data))
