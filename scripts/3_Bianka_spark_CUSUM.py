@@ -149,12 +149,6 @@ database_manager = DatabaseManager(
 
 # Write anomalies to the database
 def write_to_database(batch_df, batch_id):
-    anomaly_df = batch_df.filter(
-        (col("Anomaly_P1_FCV01D") == 1) |
-        (col("Anomaly_P1_FCV01Z") == 1) |
-        (col("Anomaly_P1_FCV03D") == 1) |
-        (col("Anomaly_x1003_24_SUM_OUT") == 1)
-    )
     # Select only columns defined in the schema
     selected_columns = [
         "timestamp", "P1_FCV01D", "CUSUM_P1_FCV01D", "Anomaly_P1_FCV01D",
@@ -163,12 +157,12 @@ def write_to_database(batch_df, batch_id):
         "x1003_24_SUM_OUT", "CUSUM_x1003_24_SUM_OUT", "Anomaly_x1003_24_SUM_OUT",
         "data_type", "attack_label"
     ]
-    anomaly_df = anomaly_df.select(*selected_columns)
+    full_df = batch_df.select(*selected_columns)
     
     # Convert to Pandas for insertion into the database
-    anomaly_pd_df = anomaly_df.toPandas()
-    if not anomaly_pd_df.empty:
-        database_manager.bulk_insert(anomaly_pd_df)
+    full_pd_df = full_df.toPandas()
+    if not full_pd_df.empty:
+        database_manager.bulk_insert(full_pd_df)
 
 query = parsed_stream.writeStream \
     .foreachBatch(write_to_database) \
