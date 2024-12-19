@@ -5,3 +5,5 @@ data/
 *.db
 checkpoints/
 .idea/
+debug/parsed_checkpoint/
+debug/raw_kafka_checkpoint/
