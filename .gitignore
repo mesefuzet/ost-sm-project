@@ -6,8 +6,12 @@ data/
 checkpoints/
 .idea/
 debug/parsed_checkpoint/
+<<<<<<< HEAD
 debug/raw_kafka_checkpoint/
 venv/
 *.json
 *.pyc
 *.log
+=======
+debug/raw_kafka_checkpoint/
+>>>>>>> 2082dcf4ef7a4f027c074df78eeeb170aa483e04
