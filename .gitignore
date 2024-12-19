@@ -8,3 +8,6 @@ checkpoints/
 debug/parsed_checkpoint/
 debug/raw_kafka_checkpoint/
 venv/
+*.json
+*.pyc
+*.log
