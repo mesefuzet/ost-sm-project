@@ -1,0 +1,13 @@
+.idea/
+adwin_results.db
+anomaly_detections.db
+debug/
+grafana/
+kafka_streaming.log~2082dcf4ef7a4f027c074df78eeeb170aa483e04
+lfr_anomaly_detections.db
+plugins/
+scripts/app/
+scripts/kafka_streaming.log
+streaming_kmeans_result.db
+venv/
+venv_emese/
